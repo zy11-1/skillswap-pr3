@@ -1,0 +1,8 @@
+[
+  { "skill_id": 1, "name": "Object-Oriented Programming", "category": "Academic" },
+  { "skill_id": 2, "name": "Calculus", "category": "Academic" },
+  { "skill_id": 3, "name": "Vue.js", "category": "Academic" },
+  { "skill_id": 4, "name": "Photoshop", "category": "Non-Academic" },
+  { "skill_id": 5, "name": "Cantonese", "category": "Non-Academic" },
+  { "skill_id": 6, "name": "Public Speaking", "category": "Non-Academic" }
+]

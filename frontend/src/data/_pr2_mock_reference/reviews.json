@@ -1,0 +1,9 @@
+[
+  {
+    "review_id": 1,
+    "booking_id": 2,
+    "rating": 5,
+    "comment": "Marcus explained derivatives so clearly, I finally understand chain rule!",
+    "created_at": "2026-06-15T12:30:00"
+  }
+]

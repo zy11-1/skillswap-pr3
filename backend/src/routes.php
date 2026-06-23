@@ -1,0 +1,69 @@
+<?php
+declare(strict_types=1);
+
+use App\Controllers\AdminController;
+use App\Controllers\AuthController;
+use App\Controllers\BookingController;
+use App\Controllers\TutorController;
+use App\Controllers\WalletController;
+use App\Middleware\JwtAuthMiddleware;
+use App\Middleware\RoleMiddleware;
+use Slim\App;
+
+return function (App $app) {
+    $appConfig = require __DIR__ . '/../config/app.php';
+    $jwtMiddleware = new JwtAuthMiddleware($appConfig['jwt_secret']);
+
+    // ---------------------------------------------------------------
+    // Health check
+    // ---------------------------------------------------------------
+    $app->get('/api/health', function ($request, $response) {
+        $response->getBody()->write((string) json_encode(['status' => 'ok']));
+        return $response->withHeader('Content-Type', 'application/json');
+    });
+
+    // ---------------------------------------------------------------
+    // Public auth routes
+    // ---------------------------------------------------------------
+    $app->post('/api/auth/register', [AuthController::class, 'register']);
+    $app->post('/api/auth/login', [AuthController::class, 'login']);
+
+    // Authenticated-only auth route
+    $app->get('/api/auth/me', [AuthController::class, 'me'])->add($jwtMiddleware);
+
+    // ---------------------------------------------------------------
+    // Public marketplace browsing (no login required to browse —
+    // booking itself requires auth, handled below)
+    // ---------------------------------------------------------------
+    $app->get('/api/tutors', [TutorController::class, 'index']);
+    $app->get('/api/tutors/{id}', [TutorController::class, 'show']);
+    $app->get('/api/skills', [TutorController::class, 'skills']);
+
+    // ---------------------------------------------------------------
+    // Bookings (requires JWT)
+    // ---------------------------------------------------------------
+    $app->group('/api/bookings', function ($group) {
+        $group->get('', [BookingController::class, 'index']);
+        $group->post('', [BookingController::class, 'create']);
+        $group->patch('/{id}/status', [BookingController::class, 'updateStatus']);
+    })->add($jwtMiddleware);
+
+    // ---------------------------------------------------------------
+    // Wallet (requires JWT)
+    // ---------------------------------------------------------------
+    $app->group('/api/wallet', function ($group) {
+        $group->get('', [WalletController::class, 'balance']);
+        $group->get('/transactions', [WalletController::class, 'transactions']);
+    })->add($jwtMiddleware);
+
+    // ---------------------------------------------------------------
+    // Admin (requires JWT + admin role)
+    // ---------------------------------------------------------------
+    $app->group('/api/admin', function ($group) {
+        $group->get('/users', [AdminController::class, 'listUsers']);
+        $group->get('/verifications/pending', [AdminController::class, 'pendingVerifications']);
+        $group->patch('/users/{id}/verify', [AdminController::class, 'verifyTutor']);
+    })
+        ->add(new RoleMiddleware(['admin']))
+        ->add($jwtMiddleware);
+};

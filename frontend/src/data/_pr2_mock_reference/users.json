@@ -1,0 +1,62 @@
+[
+  {
+    "user_id": 1,
+    "name": "Aisyah Rahman",
+    "email": "aisyah@graduate.utm.my",
+    "password": "password123",
+    "role": "tutor",
+    "faculty": "Computing",
+    "photo_url": "https://i.pravatar.cc/150?img=47",
+    "bio": "Final year Software Engineering student. I love breaking down OOP and Vue.js into simple steps.",
+    "wallet_balance": 128.50,
+    "is_verified": 1
+  },
+  {
+    "user_id": 2,
+    "name": "Marcus Tan",
+    "email": "marcus@graduate.utm.my",
+    "password": "password123",
+    "role": "tutor",
+    "faculty": "Computing",
+    "photo_url": "https://i.pravatar.cc/150?img=12",
+    "bio": "Calculus and Discrete Math tutor. 3 years of peer tutoring experience.",
+    "wallet_balance": 76.00,
+    "is_verified": 1
+  },
+  {
+    "user_id": 3,
+    "name": "Nur Izzati",
+    "email": "izzati@graduate.utm.my",
+    "password": "password123",
+    "role": "tutor",
+    "faculty": "Built Environment & Surveying",
+    "photo_url": "https://i.pravatar.cc/150?img=32",
+    "bio": "Native Cantonese speaker. I teach conversational Cantonese for travel and work.",
+    "wallet_balance": 42.00,
+    "is_verified": 0
+  },
+  {
+    "user_id": 4,
+    "name": "Zhao Zhengyi",
+    "email": "zhengyi@graduate.utm.my",
+    "password": "password123",
+    "role": "learner",
+    "faculty": "Computing",
+    "photo_url": "https://i.pravatar.cc/150?img=5",
+    "bio": "Looking for help with OOP assignments this semester.",
+    "wallet_balance": 50.00,
+    "is_verified": 0
+  },
+  {
+    "user_id": 5,
+    "name": "Admin User",
+    "email": "admin@skillswap.my",
+    "password": "admin123",
+    "role": "admin",
+    "faculty": "-",
+    "photo_url": "https://i.pravatar.cc/150?img=68",
+    "bio": "Platform administrator.",
+    "wallet_balance": 0,
+    "is_verified": 1
+  }
+]

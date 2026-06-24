@@ -15,16 +15,20 @@ $appConfig = require __DIR__ . '/../config/app.php';
 
 $app = AppFactory::create();
 
-// 中间件顺序：后加先执行
-// 执行顺序：ErrorMiddleware → CorsMiddleware → BodyParsingMiddleware → RoutingMiddleware
+// ============================================================
+// 1. 先注册路由
+// ============================================================
+$routes = require __DIR__ . '/../src/routes.php';
+$routes($app);
+
+// ============================================================
+// 2. 再加中间件（后加先执行）
+// ============================================================
 $app->addRoutingMiddleware();
 $app->addBodyParsingMiddleware();
 $app->add(new CorsMiddleware($appConfig['cors_origin']));
 
 $displayErrorDetails = ($_ENV['APP_ENV'] ?? 'production') === 'development';
 $app->addErrorMiddleware($displayErrorDetails, true, true);
-
-$routes = require __DIR__ . '/../src/routes.php';
-$routes($app);
 
 $app->run();

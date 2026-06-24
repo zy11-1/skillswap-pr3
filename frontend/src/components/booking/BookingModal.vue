@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useBookingStore } from '@/stores/booking'
+import { api } from '@/data/api'
 
 const props = defineProps({
   tutor: { type: Object, required: true },
@@ -11,14 +12,58 @@ const emit = defineEmits(['close', 'booked'])
 
 const bookingStore = useBookingStore()
 
-const today = new Date().toISOString().split('T')[0]
+// ====== 计算 7 天后的日期 ======
+const today = new Date()
+const todayStr = today.toISOString().split('T')[0]
+const maxDate = new Date()
+maxDate.setDate(maxDate.getDate() + 7)
+const maxDateStr = maxDate.toISOString().split('T')[0]
+
 const date = ref('')
 const time = ref('')
 const duration = ref(1)
 const submitting = ref(false)
 const error = ref('')
+const availableSlots = ref([])
+const loadingSlots = ref(false)
 
 const totalAmount = computed(() => props.offering.hourly_rate * duration.value)
+
+async function loadAvailability() {
+  loadingSlots.value = true
+  try {
+    const res = await api.getTutorAvailability(props.tutor.user_id)
+    availableSlots.value = res.data || []
+  } catch (err) {
+    console.error('Failed to load availability:', err)
+    availableSlots.value = []
+  } finally {
+    loadingSlots.value = false
+  }
+}
+
+// 根据选中的日期生成可用的时间选项（匹配具体日期）
+const timeOptions = computed(() => {
+  if (!date.value || !availableSlots.value.length) return []
+  
+  // ====== 直接匹配具体日期 ======
+  const slots = availableSlots.value.filter(s => s.available_date === date.value)
+  
+  const options = []
+  slots.forEach(slot => {
+    const start = parseInt(slot.start_time.split(':')[0])
+    const end = parseInt(slot.end_time.split(':')[0])
+    for (let h = start; h < end; h++) {
+      const hourStr = String(h).padStart(2, '0')
+      options.push(`${hourStr}:00`)
+    }
+  })
+  return options
+})
+
+function onDateChange() {
+  time.value = ''
+}
 
 async function submitBooking() {
   error.value = ''
@@ -36,10 +81,6 @@ async function submitBooking() {
 
   submitting.value = true
   try {
-    // Note: we don't send learner_id or total_amount — the backend
-    // reads learner_id from the JWT and recalculates total_amount
-    // from the tutor's stored hourly rate, so a tampered client
-    // value here could never be trusted anyway.
     await bookingStore.createBooking({
       tutor_id: props.tutor.user_id,
       skill_id: props.offering.skill_id,
@@ -53,6 +94,10 @@ async function submitBooking() {
     submitting.value = false
   }
 }
+
+onMounted(() => {
+  loadAvailability()
+})
 </script>
 
 <template>
@@ -73,12 +118,36 @@ async function submitBooking() {
         <form @submit.prevent="submitBooking">
           <div class="mb-3">
             <label class="form-label small">Date</label>
-            <input v-model="date" type="date" class="form-control" :min="today" required />
+            <input
+              v-model="date"
+              type="date"
+              class="form-control"
+              :min="todayStr"
+              :max="maxDateStr"
+              @change="onDateChange"
+              required
+            />
+            <!-- ====== 加了一句提示 ====== -->
+            <div class="form-text text-muted small">
+              <i class="bi bi-info-circle me-1"></i>
+              Only availability within the <strong>next 7 days</strong> is shown.
+            </div>
+            <!-- ====== 加完了 ====== -->
           </div>
+
           <div class="mb-3">
             <label class="form-label small">Time</label>
-            <input v-model="time" type="time" class="form-control" required />
+            <div v-if="loadingSlots" class="text-muted small">Loading available times...</div>
+            <div v-else-if="!date" class="text-muted small">Please select a date first.</div>
+            <div v-else-if="!timeOptions.length" class="text-muted small">No available slots for this day.</div>
+            <select v-else v-model="time" class="form-select" required>
+              <option value="" disabled>Select a time</option>
+              <option v-for="opt in timeOptions" :key="opt" :value="opt">
+                {{ opt }}
+              </option>
+            </select>
           </div>
+
           <div class="mb-3">
             <label class="form-label small">Duration (hours)</label>
             <select v-model="duration" class="form-select">

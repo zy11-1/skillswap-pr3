@@ -46,6 +46,16 @@ function unwrapError(error) {
 }
 
 export const api = {
+  // ---------- TUTOR AVAILABILITY ----------
+async getTutorAvailability(tutorId) {
+  const res = await http.get(`/api/tutors/${tutorId}/availability`)
+  return res.data
+},
+
+async addAvailability(data) {
+  const res = await http.post('/api/tutor/availability', data)
+  return res.data
+},
   // ---------- AUTH ----------
   async login(email, password) {
     try {

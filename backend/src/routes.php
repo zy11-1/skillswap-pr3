@@ -23,7 +23,7 @@ return function (App $app) {
     });
 
     // ---------------------------------------------------------------
-    // Public auth routes
+    // Public auth routes 
     // ---------------------------------------------------------------
     $app->post('/api/auth/register', [AuthController::class, 'register']);
     $app->post('/api/auth/login', [AuthController::class, 'login']);
@@ -38,6 +38,12 @@ return function (App $app) {
     $app->get('/api/tutors', [TutorController::class, 'index']);
     $app->get('/api/tutors/{id}', [TutorController::class, 'show']);
     $app->get('/api/skills', [TutorController::class, 'skills']);
+    // ---------------------------------------------------------------
+// Tutor Availability
+// ---------------------------------------------------------------
+$app->get('/api/tutors/{id}/availability', [TutorController::class, 'getAvailability']);
+$app->post('/api/tutor/availability', [TutorController::class, 'addAvailability'])
+    ->add($jwtMiddleware);
 
     // ---------------------------------------------------------------
     // Bookings (requires JWT)

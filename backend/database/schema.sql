@@ -118,7 +118,17 @@ CREATE TABLE IF NOT EXISTS WalletTransaction (
     CONSTRAINT fk_wallet_user FOREIGN KEY (user_id) REFERENCES User(user_id) ON DELETE CASCADE,
     CONSTRAINT fk_wallet_booking FOREIGN KEY (booking_id) REFERENCES Booking(booking_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
-
+-- ---------------------------------------------------------------
+-- 9. TutorAvailability (导师空闲时间)
+-- ---------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS TutorAvailability (
+    availability_id INT AUTO_INCREMENT PRIMARY KEY,
+    tutor_id INT NOT NULL,
+    available_date DATE NOT NULL,
+    start_time TIME NOT NULL,
+    end_time TIME NOT NULL,
+    CONSTRAINT fk_availability_tutor FOREIGN KEY (tutor_id) REFERENCES User(user_id) ON DELETE CASCADE
+) ENGINE=InnoDB;
 -- =================================================================
 -- SEED DATA (matches the mock JSON used in PR2, so demo accounts
 -- behave the same way once you switch from mock data to this DB)

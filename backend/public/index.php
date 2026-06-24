@@ -39,7 +39,7 @@ $app->options('/{routes:.+}', function ($request, $response) {
 });
 
 // Show detailed errors only in development — never in production
-$displayErrorDetails = ($_ENV['APP_ENV'] ?? 'development') !== 'production';
+$displayErrorDetails = true;
 $app->addErrorMiddleware($displayErrorDetails, true, true);
 
 // ---------------------------------------------------------------

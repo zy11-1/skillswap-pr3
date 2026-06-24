@@ -132,6 +132,64 @@ class TutorController
         return $this->json($response, ['data' => $skills], 200);
     }
 
+    /**
+     * GET /api/tutors/{id}/availability
+     * Returns the tutor's available time slots (future only).
+     */
+    public function getAvailability(Request $request, Response $response, array $args): Response
+    {
+        $tutorId = (int) $args['id'];
+        $db = Database::getConnection();
+
+        $stmt = $db->prepare(
+            'SELECT availability_id, tutor_id, available_date, start_time, end_time
+             FROM TutorAvailability
+             WHERE tutor_id = :tutor_id AND available_date >= CURDATE()
+             ORDER BY available_date, start_time'
+        );
+        $stmt->execute(['tutor_id' => $tutorId]);
+        $slots = $stmt->fetchAll();
+
+        return $this->json($response, ['data' => $slots], 200);
+    }
+
+    /**
+     * POST /api/tutor/availability
+     * Body: { available_date, start_time, end_time }
+     */
+    public function addAvailability(Request $request, Response $response): Response
+    {
+        $userId = (int) $request->getAttribute('user_id');
+        $data = (array) $request->getParsedBody();
+
+        $date = (string) ($data['available_date'] ?? '');
+        $start = (string) ($data['start_time'] ?? '');
+        $end = (string) ($data['end_time'] ?? '');
+
+        if ($date === '' || $start === '' || $end === '') {
+            return $this->json($response, ['error' => 'available_date, start_time, end_time are required.'], 422);
+        }
+
+        if ($date < date('Y-m-d')) {
+            return $this->json($response, ['error' => 'Cannot set availability in the past.'], 422);
+        }
+
+        $db = Database::getConnection();
+        $stmt = $db->prepare(
+            'INSERT INTO TutorAvailability (tutor_id, available_date, start_time, end_time)
+             VALUES (:tutor_id, :date, :start, :end)'
+        );
+        $stmt->execute([
+            'tutor_id' => $userId,
+            'date' => $date,
+            'start' => $start,
+            'end' => $end
+        ]);
+
+        $id = (int) $db->lastInsertId();
+        return $this->json($response, ['data' => ['availability_id' => $id]], 201);
+    }
+
     private function json(Response $response, array $data, int $status): Response
     {
         $response->getBody()->write((string) json_encode($data));

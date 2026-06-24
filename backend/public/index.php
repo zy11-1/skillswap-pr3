@@ -22,21 +22,19 @@ $appConfig = require __DIR__ . '/../config/app.php';
 
 $app = AppFactory::create();
 
-// Slim runs from a subdirectory in some local setups (e.g. Laragon
-// virtual hosts) — this keeps route matching correct either way.
-// $app->setBasePath('/skillswap-pr3/public');
-
 // ---------------------------------------------------------------
-// Global middleware
+// 1. 先注册 OPTIONS 路由（在中间件之前）
 // ---------------------------------------------------------------
-$app->add(new CorsMiddleware($appConfig['cors_origin']));
-$app->addBodyParsingMiddleware();
-$app->addRoutingMiddleware();
-
-// Handle CORS preflight (OPTIONS) requests for every route
 $app->options('/{routes:.+}', function ($request, $response) {
     return $response;
 });
+
+// ---------------------------------------------------------------
+// 2. 再添加中间件（顺序：后加先执行）
+// ---------------------------------------------------------------
+$app->addRoutingMiddleware();
+$app->addBodyParsingMiddleware();
+$app->add(new CorsMiddleware($appConfig['cors_origin']));
 
 // Show detailed errors only in development — never in production
 $displayErrorDetails = true;

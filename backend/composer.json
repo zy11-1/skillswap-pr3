@@ -3,11 +3,13 @@
     "description": "SkillSwap backend API - SCSM2223-04 PR3",
     "type": "project",
     "require": {
-        "php": "^8.1",
-        "slim/slim": "^4.12",
-        "slim/psr7": "^1.6",
-        "vlucas/phpdotenv": "^5.6"
-    },
+    "php": "^8.2",
+    "ext-pdo": "*",
+    "ext-pdo_mysql": "*",
+    "slim/slim": "^4.12",
+    "slim/psr7": "^1.6",
+    "vlucas/phpdotenv": "^5.6"
+},
     "autoload": {
         "psr-4": {
             "App\\": "src/"

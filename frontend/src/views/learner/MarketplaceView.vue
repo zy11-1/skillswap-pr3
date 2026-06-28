@@ -23,12 +23,12 @@ async function loadData() {
       api.getSkills()
     ])
 
-    // api.getTutors() 返回 { data: [...] }
+    // api.getTutors() returns { data: [...] }
     tutors.value = tutorsRes.data || []
     skills.value = skillsRes.data || []
   } catch (err) {
-    error.value = '加载数据失败，请检查后端是否运行'
-    console.error('加载失败:', err)
+    error.value = 'Failed to load data. Please check that the backend is running.'
+    console.error('Failed to load data:', err)
   } finally {
     loading.value = false
   }
@@ -108,7 +108,7 @@ function resetFilters() {
       </div>
     </div>
 
-    <!-- 错误提示 -->
+    <!-- Error message -->
     <div v-if="error" class="alert alert-danger">
       {{ error }}
     </div>

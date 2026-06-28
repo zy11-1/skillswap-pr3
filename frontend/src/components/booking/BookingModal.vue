@@ -12,7 +12,7 @@ const emit = defineEmits(['close', 'booked'])
 
 const bookingStore = useBookingStore()
 
-// ====== 计算 7 天后的日期 ======
+// ====== Compute the date 7 days from now ======
 const today = new Date()
 const todayStr = today.toISOString().split('T')[0]
 const maxDate = new Date()
@@ -42,11 +42,11 @@ async function loadAvailability() {
   }
 }
 
-// 根据选中的日期生成可用的时间选项（匹配具体日期）
+// Build the available time options for the selected date (matching the exact date)
 const timeOptions = computed(() => {
   if (!date.value || !availableSlots.value.length) return []
   
-  // ====== 直接匹配具体日期 ======
+  // ====== Match the exact selected date ======
   const slots = availableSlots.value.filter(s => s.available_date === date.value)
   
   const options = []
@@ -127,12 +127,12 @@ onMounted(() => {
               @change="onDateChange"
               required
             />
-            <!-- ====== 加了一句提示 ====== -->
+            <!-- ====== Added a hint ====== -->
             <div class="form-text text-muted small">
               <i class="bi bi-info-circle me-1"></i>
               Only availability within the <strong>next 7 days</strong> is shown.
             </div>
-            <!-- ====== 加完了 ====== -->
+            <!-- ====== End of hint ====== -->
           </div>
 
           <div class="mb-3">

@@ -12,7 +12,7 @@ const defaultAvatar = 'https://i.pravatar.cc/150?img=1'
 <template>
   <div class="card card-tutor h-100">
     <div class="card-body d-flex flex-column">
-      <!-- 头像 + 姓名 -->
+      <!-- Avatar + name -->
       <div class="d-flex align-items-center mb-2">
         <img
           :src="tutor.tutor_photo || defaultAvatar"
@@ -34,15 +34,15 @@ const defaultAvatar = 'https://i.pravatar.cc/150?img=1'
         </div>
       </div>
 
-      <!-- 技能标签 -->
+      <!-- Skill tag -->
       <span class="badge bg-light text-dark border mb-2">{{ tutor.skill_name }}</span>
 
-      <!-- 描述：固定 2 行，超出省略号 -->
+      <!-- Description: fixed 2 lines, truncated with ellipsis -->
       <p class="small text-muted mb-2" style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; flex: 1;">
         {{ tutor.description }}
       </p>
 
-      <!-- 价格和评分 -->
+      <!-- Price and rating -->
       <div class="d-flex justify-content-between align-items-center mt-auto">
         <div>
           <span class="fw-bold text-primary-ss">RM{{ tutor.hourly_rate.toFixed(2) }}</span>
@@ -54,7 +54,7 @@ const defaultAvatar = 'https://i.pravatar.cc/150?img=1'
         <div v-else class="small text-muted">No reviews yet</div>
       </div>
 
-      <!-- 按钮 -->
+      <!-- Button -->
       <router-link
         :to="`/tutor/${tutor.user_id}`"
         class="btn btn-outline-primary btn-sm w-100 mt-3"

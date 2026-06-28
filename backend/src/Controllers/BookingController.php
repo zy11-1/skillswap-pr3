@@ -16,6 +16,9 @@ class BookingController
         'Cancelled' => [],
     ];
 
+    // Platform commission charged on every completed session (CLO3).
+    private const COMMISSION_RATE = 0.10;
+
     /**
      * GET /api/bookings (requires JWT)
      * Returns the authenticated user's bookings — as learner or as tutor,
@@ -154,27 +157,45 @@ class BookingController
             $stmt = $db->prepare('UPDATE Booking SET status = :status WHERE booking_id = :id');
             $stmt->execute(['status' => $newStatus, 'id' => $bookingId]);
 
-            // When a session is marked Completed, settle the wallet:
-            // credit the tutor, debit the learner. This keeps the
-            // WalletTransaction ledger and User.wallet_balance in sync.
+            // When a session is marked Completed, settle the wallet.
+            // The learner pays the full amount; the platform takes a 10%
+            // commission (CLO3) and the tutor receives the remaining 90%.
+            // Crediting the platform/admin account keeps the closed-loop
+            // ledger balanced (total credits == total debits).
             if ($newStatus === 'Completed') {
                 $amount = (float) $booking['total_amount'];
+                $commission = round($amount * self::COMMISSION_RATE, 2);
+                $tutorNet = round($amount - $commission, 2);
 
-                $stmt = $db->prepare('UPDATE User SET wallet_balance = wallet_balance + :amount WHERE user_id = :id');
-                $stmt->execute(['amount' => $amount, 'id' => $booking['tutor_id']]);
-
-                $stmt = $db->prepare('UPDATE User SET wallet_balance = wallet_balance - :amount WHERE user_id = :id');
-                $stmt->execute(['amount' => $amount, 'id' => $booking['learner_id']]);
-
-                $stmt = $db->prepare(
+                $updateBalance = $db->prepare('UPDATE User SET wallet_balance = wallet_balance + :amount WHERE user_id = :id');
+                $insertTxn = $db->prepare(
                     'INSERT INTO WalletTransaction (user_id, amount, type, booking_id) VALUES (:user_id, :amount, :type, :booking_id)'
                 );
-                $stmt->execute([
-                    'user_id' => $booking['tutor_id'], 'amount' => $amount, 'type' => 'Credit', 'booking_id' => $bookingId
-                ]);
-                $stmt->execute([
+
+                // Learner pays the full amount.
+                $updateBalance->execute(['amount' => -$amount, 'id' => $booking['learner_id']]);
+                $insertTxn->execute([
                     'user_id' => $booking['learner_id'], 'amount' => $amount, 'type' => 'Debit', 'booking_id' => $bookingId
                 ]);
+
+                // Tutor receives 90%.
+                $updateBalance->execute(['amount' => $tutorNet, 'id' => $booking['tutor_id']]);
+                $insertTxn->execute([
+                    'user_id' => $booking['tutor_id'], 'amount' => $tutorNet, 'type' => 'Credit', 'booking_id' => $bookingId
+                ]);
+
+                // Platform keeps the 10% commission (credited to the admin
+                // account, if one exists, so revenue is visible in the ledger).
+                if ($commission > 0) {
+                    $adminStmt = $db->query("SELECT user_id FROM User WHERE role = 'admin' ORDER BY user_id LIMIT 1");
+                    $adminId = $adminStmt->fetchColumn();
+                    if ($adminId) {
+                        $updateBalance->execute(['amount' => $commission, 'id' => $adminId]);
+                        $insertTxn->execute([
+                            'user_id' => $adminId, 'amount' => $commission, 'type' => 'Credit', 'booking_id' => $bookingId
+                        ]);
+                    }
+                }
             }
 
             $db->commit();

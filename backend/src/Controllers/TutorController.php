@@ -133,6 +133,30 @@ class TutorController
     }
 
     /**
+     * GET /api/skills/trending
+     * Most in-demand skills, ranked by how often they've been booked
+     * (a stand-in for search-trend data). Drives the "Trending" chips.
+     */
+    public function trendingSkills(Request $request, Response $response): Response
+    {
+        $db = Database::getConnection();
+        $stmt = $db->query(
+            'SELECT s.skill_id, s.name, s.category, COUNT(b.booking_id) AS booking_count
+             FROM Skill s
+             LEFT JOIN Booking b ON b.skill_id = s.skill_id
+             GROUP BY s.skill_id, s.name, s.category
+             ORDER BY booking_count DESC, s.name ASC
+             LIMIT 6'
+        );
+        $skills = $stmt->fetchAll();
+        foreach ($skills as &$s) {
+            $s['booking_count'] = (int) $s['booking_count'];
+        }
+
+        return $this->json($response, ['data' => $skills], 200);
+    }
+
+    /**
      * GET /api/tutors/{id}/availability
      * Returns the tutor's available time slots (future only).
      */

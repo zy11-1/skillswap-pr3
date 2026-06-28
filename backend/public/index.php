@@ -16,13 +16,13 @@ $appConfig = require __DIR__ . '/../config/app.php';
 $app = AppFactory::create();
 
 // ============================================================
-// 1. 先注册路由
+// 1. Register routes first
 // ============================================================
 $routes = require __DIR__ . '/../src/routes.php';
 $routes($app);
 
 // ============================================================
-// 2. 再加中间件（后加先执行）
+// 2. Then add middleware (added last, executed first)
 // ============================================================
 $app->addRoutingMiddleware();
 $app->addBodyParsingMiddleware();

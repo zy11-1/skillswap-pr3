@@ -20,7 +20,7 @@ class CorsMiddleware implements MiddlewareInterface
 
     public function process(Request $request, RequestHandler $handler): Response
     {
-        // ====== 关键改动：OPTIONS 请求直接在中间件处理 ======
+        // ====== Key change: handle OPTIONS (preflight) requests directly in the middleware ======
         if ($request->getMethod() === 'OPTIONS') {
             $response = new SlimResponse();
             return $response
@@ -30,10 +30,10 @@ class CorsMiddleware implements MiddlewareInterface
                 ->withStatus(200);
         }
 
-        // ====== 其他请求正常处理 ======
+        // ====== Handle all other requests normally ======
         $response = $handler->handle($request);
 
-        // 给所有响应添加 CORS 头（包括错误响应）
+        // Add CORS headers to every response (including error responses)
         return $response
             ->withHeader('Access-Control-Allow-Origin', $this->allowedOrigin)
             ->withHeader('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type, Accept, Origin, Authorization')

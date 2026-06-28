@@ -40,7 +40,7 @@ async function addSlot() {
   try {
     const res = await api.addAvailability(newSlot.value)
     availability.value.push({ ...newSlot.value, availability_id: res.data.availability_id })
-    // 重置表单
+    // Reset the form
     newSlot.value = { 
       available_date: new Date().toISOString().split('T')[0], 
       start_time: '09:00', 

@@ -47,6 +47,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/group-classes',
+    name: 'group-classes',
+    component: () => import('@/views/GroupClassesView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/tutor-dashboard',
     name: 'tutor-dashboard',
     component: () => import('@/views/tutor/TutorDashboardView.vue'),

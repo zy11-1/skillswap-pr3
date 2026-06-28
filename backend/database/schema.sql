@@ -143,6 +143,34 @@ CREATE TABLE IF NOT EXISTS MeritRequest (
     CONSTRAINT fk_merit_user FOREIGN KEY (user_id) REFERENCES User(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
+-- ---------------------------------------------------------------
+-- 11. GroupClass + GroupEnrollment (one tutor, many learners)
+-- ---------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS GroupClass (
+    group_class_id  INT AUTO_INCREMENT PRIMARY KEY,
+    tutor_id        INT NOT NULL,
+    skill_id        INT NOT NULL,
+    title           VARCHAR(255) NOT NULL,
+    class_date      DATETIME NOT NULL,
+    duration        INT NOT NULL,
+    capacity        INT NOT NULL,
+    price_per_seat  DECIMAL(10,2) NOT NULL,
+    status          ENUM('Open', 'Cancelled') NOT NULL DEFAULT 'Open',
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_groupclass_tutor FOREIGN KEY (tutor_id) REFERENCES User(user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_groupclass_skill FOREIGN KEY (skill_id) REFERENCES Skill(skill_id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS GroupEnrollment (
+    enrollment_id   INT AUTO_INCREMENT PRIMARY KEY,
+    group_class_id  INT NOT NULL,
+    learner_id      INT NOT NULL,
+    created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_enroll_class FOREIGN KEY (group_class_id) REFERENCES GroupClass(group_class_id) ON DELETE CASCADE,
+    CONSTRAINT fk_enroll_learner FOREIGN KEY (learner_id) REFERENCES User(user_id) ON DELETE CASCADE,
+    CONSTRAINT uq_enroll UNIQUE (group_class_id, learner_id)
+) ENGINE=InnoDB;
+
 -- =================================================================
 -- SEED DATA (matches the mock JSON used in PR2, so demo accounts
 -- behave the same way once you switch from mock data to this DB)

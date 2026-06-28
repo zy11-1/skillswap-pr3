@@ -11,6 +11,12 @@ const defaultAvatar = 'https://i.pravatar.cc/150?img=1'
 
 const showNavbar = computed(() => auth.isLoggedIn && !route.meta.guestOnly)
 
+function switchMode(mode) {
+  auth.setMode(mode)
+  // Send the user to the home screen of the mode they picked.
+  router.push(mode === 'tutor' ? '/tutor-dashboard' : '/marketplace')
+}
+
 function handleLogout() {
   auth.logout()
   router.push('/login')
@@ -42,13 +48,34 @@ function handleLogout() {
           <li class="nav-item">
             <router-link class="nav-link" to="/wallet">Wallet</router-link>
           </li>
-          <li v-if="auth.isTutor" class="nav-item">
+          <li v-if="auth.isTutorMode" class="nav-item">
             <router-link class="nav-link" to="/tutor-dashboard">Tutor Dashboard</router-link>
           </li>
           <li v-if="auth.isAdmin" class="nav-item">
             <router-link class="nav-link" to="/admin">Admin</router-link>
           </li>
         </ul>
+
+        <!-- Learner / Tutor mode toggle: one account, two modes, shared wallet -->
+        <div v-if="!auth.isAdmin" class="btn-group btn-group-sm me-3" role="group" aria-label="Mode">
+          <button
+            type="button"
+            class="btn"
+            :class="auth.isLearnerMode ? 'btn-light' : 'btn-outline-light'"
+            @click="switchMode('learner')"
+          >
+            <i class="bi bi-mortarboard me-1"></i>Learner
+          </button>
+          <button
+            type="button"
+            class="btn"
+            :class="auth.isTutorMode ? 'btn-light' : 'btn-outline-light'"
+            @click="switchMode('tutor')"
+          >
+            <i class="bi bi-easel me-1"></i>Tutor
+          </button>
+        </div>
+
         <div class="d-flex align-items-center text-white">
           <img
             :src="auth.user?.photo_url || defaultAvatar"

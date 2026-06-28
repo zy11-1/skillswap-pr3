@@ -24,10 +24,14 @@ class BookingController
     public function index(Request $request, Response $response): Response
     {
         $userId = (int) $request->getAttribute('user_id');
-        $role = (string) $request->getAttribute('role');
+
+        // A single account can act as both learner and tutor, so which
+        // bookings we return depends on the *mode* the client is in,
+        // passed as ?as=learner|tutor (defaults to learner).
+        $mode = (string) ($request->getQueryParams()['as'] ?? 'learner');
+        $column = $mode === 'tutor' ? 'b.tutor_id' : 'b.learner_id';
 
         $db = Database::getConnection();
-        $column = $role === 'tutor' ? 'b.tutor_id' : 'b.learner_id';
 
         $stmt = $db->prepare("
             SELECT b.*, learner.name AS learner_name, tutor.name AS tutor_name, s.name AS skill_name,

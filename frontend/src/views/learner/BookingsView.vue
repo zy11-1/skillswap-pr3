@@ -79,24 +79,24 @@ function formatDate(dateStr) {
       <table class="table align-middle bg-white shadow-sm rounded">
         <thead>
           <tr class="text-muted small">
-            <th>{{ auth.isTutor ? 'Learner' : 'Tutor' }}</th>
+            <th>{{ auth.isTutorMode ? 'Learner' : 'Tutor' }}</th>
             <th>Skill</th>
             <th>Date & Time</th>
             <th>Duration</th>
             <th>Amount</th>
             <th>Status</th>
-            <th v-if="!auth.isTutor">Review</th>
+            <th v-if="!auth.isTutorMode">Review</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="b in filteredBookings" :key="b.booking_id">
-            <td>{{ auth.isTutor ? b.learner_name : b.tutor_name }}</td>
+            <td>{{ auth.isTutorMode ? b.learner_name : b.tutor_name }}</td>
             <td>{{ b.skill_name }}</td>
             <td class="small">{{ formatDate(b.booking_date) }}</td>
             <td>{{ b.duration }}h</td>
             <td>RM{{ b.total_amount.toFixed(2) }}</td>
             <td><span :class="statusClass(b.status)">{{ b.status }}</span></td>
-            <td v-if="!auth.isTutor">
+            <td v-if="!auth.isTutorMode">
               <!-- Reviews only make sense once a session is Completed -->
               <template v-if="b.status === 'Completed'">
                 <div v-if="b.review_id" class="d-flex align-items-center gap-2">

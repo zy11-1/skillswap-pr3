@@ -1,6 +1,7 @@
 // src/stores/booking.js
 import { defineStore } from 'pinia'
 import { api } from '@/data/api'
+import { useAuthStore } from '@/stores/auth'
 
 export const useBookingStore = defineStore('booking', {
   state: () => ({
@@ -12,7 +13,9 @@ export const useBookingStore = defineStore('booking', {
     async fetchBookings() {
       this.loading = true
       try {
-        const res = await api.getBookings()
+        // Fetch bookings for whichever mode the user is currently in.
+        const mode = useAuthStore().activeMode
+        const res = await api.getBookings(mode)
         this.bookings = res.data
       } finally {
         this.loading = false

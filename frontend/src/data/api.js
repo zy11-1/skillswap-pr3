@@ -103,8 +103,8 @@ async addAvailability(data) {
   },
 
   // ---------- BOOKINGS ----------
-  async getBookings() {
-    const res = await http.get('/api/bookings')
+  async getBookings(mode = 'learner') {
+    const res = await http.get('/api/bookings', { params: { as: mode } })
     return res.data
   },
 

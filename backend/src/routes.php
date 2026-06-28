@@ -4,6 +4,7 @@ declare(strict_types=1);
 use App\Controllers\AdminController;
 use App\Controllers\AuthController;
 use App\Controllers\BookingController;
+use App\Controllers\MessageController;
 use App\Controllers\ReviewController;
 use App\Controllers\TutorController;
 use App\Controllers\VerificationController;
@@ -76,6 +77,15 @@ $app->post('/api/tutor/availability', [TutorController::class, 'addAvailability'
         $group->get('', [BookingController::class, 'index']);
         $group->post('', [BookingController::class, 'create']);
         $group->patch('/{id}/status', [BookingController::class, 'updateStatus']);
+    })->add($jwtMiddleware);
+
+    // ---------------------------------------------------------------
+    // Messages (in-app chat, requires JWT)
+    // ---------------------------------------------------------------
+    $app->group('/api/messages', function ($group) {
+        $group->get('', [MessageController::class, 'conversations']);
+        $group->post('', [MessageController::class, 'send']);
+        $group->get('/{userId}', [MessageController::class, 'thread']);
     })->add($jwtMiddleware);
 
     // ---------------------------------------------------------------

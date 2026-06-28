@@ -193,6 +193,26 @@ async addAvailability(data) {
     }
   },
 
+  // ---------- MESSAGES ----------
+  async getConversations() {
+    const res = await http.get('/api/messages')
+    return res.data
+  },
+
+  async getThread(userId) {
+    const res = await http.get(`/api/messages/${userId}`)
+    return res.data
+  },
+
+  async sendMessage(receiverId, body) {
+    try {
+      const res = await http.post('/api/messages', { receiver_id: receiverId, body })
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
   // ---------- VERIFICATION ----------
   async getVerificationStatus() {
     const res = await http.get('/api/verification/me')

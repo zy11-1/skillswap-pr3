@@ -47,6 +47,16 @@ $app->post('/api/tutor/availability', [TutorController::class, 'addAvailability'
     ->add($jwtMiddleware);
 
     // ---------------------------------------------------------------
+    // Tutor skill offerings (manage the skills you teach)
+    // ---------------------------------------------------------------
+    $app->group('/api/tutor/skills', function ($group) {
+        $group->get('', [TutorController::class, 'mySkills']);
+        $group->post('', [TutorController::class, 'addSkill']);
+        $group->patch('/{id}', [TutorController::class, 'updateSkill']);
+        $group->delete('/{id}', [TutorController::class, 'deleteSkill']);
+    })->add($jwtMiddleware);
+
+    // ---------------------------------------------------------------
     // Reviews & ratings
     // Reading a tutor's reviews is public; creating/editing/deleting
     // requires being logged in (the controller checks you own it).

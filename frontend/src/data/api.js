@@ -56,6 +56,39 @@ async addAvailability(data) {
   const res = await http.post('/api/tutor/availability', data)
   return res.data
 },
+
+  // ---------- TUTOR SKILL OFFERINGS ----------
+  async getMySkills() {
+    const res = await http.get('/api/tutor/skills')
+    return res.data
+  },
+
+  async addMySkill(payload) {
+    try {
+      const res = await http.post('/api/tutor/skills', payload)
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
+  async updateMySkill(userSkillId, payload) {
+    try {
+      const res = await http.patch(`/api/tutor/skills/${userSkillId}`, payload)
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
+  async deleteMySkill(userSkillId) {
+    try {
+      const res = await http.delete(`/api/tutor/skills/${userSkillId}`)
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
   // ---------- AUTH ----------
   async login(email, password) {
     try {

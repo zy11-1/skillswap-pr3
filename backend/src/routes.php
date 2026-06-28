@@ -6,6 +6,7 @@ use App\Controllers\AuthController;
 use App\Controllers\BookingController;
 use App\Controllers\ReviewController;
 use App\Controllers\TutorController;
+use App\Controllers\VerificationController;
 use App\Controllers\WalletController;
 use App\Middleware\JwtAuthMiddleware;
 use App\Middleware\RoleMiddleware;
@@ -78,6 +79,14 @@ $app->post('/api/tutor/availability', [TutorController::class, 'addAvailability'
     })->add($jwtMiddleware);
 
     // ---------------------------------------------------------------
+    // Verification (tutor uploads a document; admin approves it)
+    // ---------------------------------------------------------------
+    $app->group('/api/verification', function ($group) {
+        $group->post('', [VerificationController::class, 'submit']);
+        $group->get('/me', [VerificationController::class, 'myStatus']);
+    })->add($jwtMiddleware);
+
+    // ---------------------------------------------------------------
     // Wallet (requires JWT)
     // ---------------------------------------------------------------
     $app->group('/api/wallet', function ($group) {
@@ -91,6 +100,8 @@ $app->post('/api/tutor/availability', [TutorController::class, 'addAvailability'
     $app->group('/api/admin', function ($group) {
         $group->get('/users', [AdminController::class, 'listUsers']);
         $group->get('/verifications/pending', [AdminController::class, 'pendingVerifications']);
+        $group->get('/verifications/requests', [AdminController::class, 'verificationRequests']);
+        $group->patch('/verifications/requests/{id}', [AdminController::class, 'reviewVerification']);
         $group->patch('/users/{id}/verify', [AdminController::class, 'verifyTutor']);
     })
         ->add(new RoleMiddleware(['admin']))

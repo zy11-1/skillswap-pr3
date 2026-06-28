@@ -69,6 +69,43 @@ async function removeOffering(userSkillId) {
   }
 }
 
+// ---- Verification ----
+const verification = ref({ is_verified: 0, request: null })
+const verifFile = ref(null)
+const verifUploading = ref(false)
+const verifError = ref('')
+
+async function loadVerification() {
+  try {
+    const res = await api.getVerificationStatus()
+    verification.value = res.data
+  } catch (err) {
+    console.error('Failed to load verification status:', err)
+  }
+}
+
+function onVerifFileChange(e) {
+  verifFile.value = e.target.files[0] || null
+}
+
+async function uploadDocument() {
+  verifError.value = ''
+  if (!verifFile.value) {
+    verifError.value = 'Choose a file (JPG, PNG or PDF) first.'
+    return
+  }
+  verifUploading.value = true
+  try {
+    await api.submitVerification(verifFile.value)
+    verifFile.value = null
+    await loadVerification()
+  } catch (err) {
+    verifError.value = err.message || 'Upload failed.'
+  } finally {
+    verifUploading.value = false
+  }
+}
+
 async function loadAvailability() {
   loadingAvailability.value = true
   try {
@@ -112,6 +149,7 @@ onMounted(() => {
   bookingStore.fetchBookings()
   loadAvailability()
   loadSkills()
+  loadVerification()
 })
 
 async function respond(bookingId, status) {
@@ -190,6 +228,53 @@ function formatDate(dateStr) {
     <div v-else class="text-center py-3 text-muted">
       <i class="bi bi-inbox" style="font-size: 2rem"></i>
       <p class="mt-2">No booking requests yet.</p>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- Verification -->
+    <!-- ============================================================ -->
+    <div class="card border-0 shadow-sm mt-4">
+      <div class="card-header bg-white fw-bold">
+        <i class="bi bi-patch-check me-2"></i>Verification
+      </div>
+      <div class="card-body">
+        <div v-if="verification.is_verified" class="alert alert-success py-2 mb-0">
+          <i class="bi bi-patch-check-fill me-1"></i>
+          Your account is <strong>verified</strong>. Learners see a verified badge on your profile.
+        </div>
+        <template v-else>
+          <p class="text-muted small mb-2">
+            Upload a transcript or certificate (JPG, PNG or PDF). An admin will review it and grant
+            you a <strong>Verified</strong> badge.
+          </p>
+          <div v-if="verifError" class="alert alert-danger py-2 small">{{ verifError }}</div>
+
+          <div
+            v-if="verification.request && verification.request.status === 'Pending'"
+            class="alert alert-info py-2 small mb-2"
+          >
+            <i class="bi bi-hourglass-split me-1"></i>
+            Your document is uploaded and <strong>pending review</strong>.
+          </div>
+          <div
+            v-else-if="verification.request && verification.request.status === 'Rejected'"
+            class="alert alert-warning py-2 small mb-2"
+          >
+            Your previous request was rejected. You can upload a new document.
+          </div>
+
+          <div v-if="!(verification.request && verification.request.status === 'Pending')" class="row g-2 align-items-end">
+            <div class="col-md-8">
+              <input type="file" accept=".jpg,.jpeg,.png,.pdf" class="form-control form-control-sm" @change="onVerifFileChange" />
+            </div>
+            <div class="col-md-4">
+              <button class="btn btn-primary btn-sm w-100" :disabled="verifUploading" @click="uploadDocument">
+                {{ verifUploading ? 'Uploading...' : 'Upload for verification' }}
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
     </div>
 
     <!-- ============================================================ -->

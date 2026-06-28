@@ -1,27 +1,50 @@
 <script setup>
 import { ref, onMounted } from 'vue'
-import { api } from '@/data/api'
+import { api, apiBaseUrl } from '@/data/api'
 
 const pendingTutors = ref([])
 const allUsers = ref([])
+const docRequests = ref([])
 const loading = ref(true)
 const verifyingId = ref(null)
+const reviewingId = ref(null)
 
 async function loadData() {
   loading.value = true
   try {
-    const [pendingRes, usersRes] = await Promise.all([
+    const [pendingRes, usersRes, docRes] = await Promise.all([
       api.getPendingVerifications(),
-      api.getAllUsers()
+      api.getAllUsers(),
+      api.getVerificationRequests()
     ])
     pendingTutors.value = pendingRes.data
     allUsers.value = usersRes.data
+    docRequests.value = docRes.data
   } finally {
     loading.value = false
   }
 }
 
 onMounted(loadData)
+
+function docUrl(path) {
+  return apiBaseUrl + path
+}
+
+async function reviewDoc(requestId, status) {
+  reviewingId.value = requestId
+  try {
+    await api.reviewVerification(requestId, status)
+    const req = docRequests.value.find((r) => r.request_id === requestId)
+    docRequests.value = docRequests.value.filter((r) => r.request_id !== requestId)
+    if (status === 'Approved' && req) {
+      const user = allUsers.value.find((u) => u.user_id === req.user_id)
+      if (user) user.is_verified = 1
+    }
+  } finally {
+    reviewingId.value = null
+  }
+}
 
 async function approve(userId) {
   verifyingId.value = userId
@@ -73,6 +96,51 @@ async function approve(userId) {
           </div>
         </div>
       </div>
+
+      <!-- Document verification requests -->
+      <h6 class="fw-bold mb-3">Document Verification Requests</h6>
+      <div v-if="docRequests.length" class="card border-0 shadow-sm mb-4">
+        <div class="table-responsive">
+          <table class="table mb-0 align-middle">
+            <thead>
+              <tr class="text-muted small">
+                <th>Name</th>
+                <th>Faculty</th>
+                <th>Document</th>
+                <th class="text-end">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in docRequests" :key="r.request_id">
+                <td>{{ r.name }}</td>
+                <td>{{ r.faculty }}</td>
+                <td>
+                  <a :href="docUrl(r.document_url)" target="_blank" rel="noopener" class="small">
+                    <i class="bi bi-file-earmark-text me-1"></i>View document
+                  </a>
+                </td>
+                <td class="text-end">
+                  <button
+                    class="btn btn-success btn-sm me-1"
+                    :disabled="reviewingId === r.request_id"
+                    @click="reviewDoc(r.request_id, 'Approved')"
+                  >
+                    <i class="bi bi-check-lg"></i> Approve
+                  </button>
+                  <button
+                    class="btn btn-outline-danger btn-sm"
+                    :disabled="reviewingId === r.request_id"
+                    @click="reviewDoc(r.request_id, 'Rejected')"
+                  >
+                    Reject
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p v-else class="text-muted small mb-4">No document requests awaiting review.</p>
 
       <!-- Pending verifications -->
       <h6 class="fw-bold mb-3">Pending Tutor Verifications</h6>

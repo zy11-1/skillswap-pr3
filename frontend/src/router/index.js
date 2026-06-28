@@ -41,6 +41,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/messages',
+    name: 'messages',
+    component: () => import('@/views/MessagesView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/tutor-dashboard',
     name: 'tutor-dashboard',
     component: () => import('@/views/tutor/TutorDashboardView.vue'),

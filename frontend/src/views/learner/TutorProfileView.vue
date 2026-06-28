@@ -71,6 +71,12 @@ function handleBooked() {
             </h5>
             <p class="text-muted small">{{ tutor.faculty }}</p>
             <p class="small">{{ tutor.bio }}</p>
+            <router-link
+              :to="{ name: 'messages', query: { to: tutor.user_id, name: tutor.name } }"
+              class="btn btn-outline-primary btn-sm"
+            >
+              <i class="bi bi-chat-dots me-1"></i>Message
+            </router-link>
           </div>
         </div>
 

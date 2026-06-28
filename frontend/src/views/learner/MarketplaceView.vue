@@ -6,6 +6,7 @@ import TutorCard from '@/components/tutor/TutorCard.vue'
 const tutors = ref([])
 const skills = ref([])
 const trending = ref([])
+const recommended = ref([])
 const loading = ref(true)
 const error = ref(null)
 
@@ -27,16 +28,18 @@ async function loadData() {
   error.value = null
 
   try {
-    const [tutorsRes, skillsRes, trendingRes] = await Promise.all([
+    const [tutorsRes, skillsRes, trendingRes, recommendedRes] = await Promise.all([
       api.getTutors(),
       api.getSkills(),
-      api.getTrendingSkills()
+      api.getTrendingSkills(),
+      api.getRecommendedTutors()
     ])
 
     // api.getTutors() returns { data: [...] }
     tutors.value = tutorsRes.data || []
     skills.value = skillsRes.data || []
     trending.value = trendingRes.data || []
+    recommended.value = recommendedRes.data || []
   } catch (err) {
     error.value = 'Failed to load data. Please check that the backend is running.'
     console.error('Failed to load data:', err)
@@ -80,6 +83,17 @@ function resetFilters() {
     <div class="mb-4">
       <h3 class="fw-bold">Find a Tutor</h3>
       <p class="text-muted">Browse skills offered by your fellow students</p>
+    </div>
+
+    <!-- Recommended for you (same faculty) -->
+    <div v-if="!loading && recommended.length" class="mb-4">
+      <h6 class="fw-bold mb-2"><i class="bi bi-stars me-1 text-warning"></i>Recommended for you</h6>
+      <p class="text-muted small mb-2">Tutors from your faculty</p>
+      <div class="row g-3">
+        <div v-for="tutor in recommended" :key="'rec-' + tutor.userskill_id" class="col-md-4">
+          <TutorCard :tutor="tutor" />
+        </div>
+      </div>
     </div>
 
     <!-- Trending skills -->

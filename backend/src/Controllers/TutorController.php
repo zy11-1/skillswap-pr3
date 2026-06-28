@@ -73,6 +73,49 @@ class TutorController
     }
 
     /**
+     * GET /api/tutors/recommended (requires JWT)
+     * Suggests tutors in the same faculty as the logged-in user, ranked
+     * by rating — a simple faculty-based recommendation (Stretch §6.3.3).
+     */
+    public function recommended(Request $request, Response $response): Response
+    {
+        $userId = (int) $request->getAttribute('user_id');
+        $db = Database::getConnection();
+
+        $stmt = $db->prepare('SELECT faculty FROM User WHERE user_id = :id');
+        $stmt->execute(['id' => $userId]);
+        $faculty = (string) ($stmt->fetchColumn() ?: '');
+
+        if ($faculty === '') {
+            return $this->json($response, ['data' => []], 200);
+        }
+
+        $stmt = $db->prepare(
+            "SELECT us.userskill_id, us.user_id, us.skill_id, us.hourly_rate, us.level, us.description,
+                    u.name AS tutor_name, u.photo_url AS tutor_photo, u.faculty AS tutor_faculty, u.is_verified,
+                    s.name AS skill_name, s.category AS skill_category,
+                    ROUND(AVG(r.rating), 1) AS avg_rating
+             FROM UserSkill us
+             JOIN User u ON u.user_id = us.user_id
+             JOIN Skill s ON s.skill_id = us.skill_id
+             LEFT JOIN Booking b ON b.tutor_id = us.user_id AND b.skill_id = us.skill_id
+             LEFT JOIN Review r ON r.booking_id = b.booking_id
+             WHERE u.role = 'tutor' AND u.faculty = :faculty AND u.user_id != :me
+             GROUP BY us.userskill_id
+             ORDER BY u.is_verified DESC, avg_rating DESC
+             LIMIT 6"
+        );
+        $stmt->execute(['faculty' => $faculty, 'me' => $userId]);
+        $tutors = $stmt->fetchAll();
+        foreach ($tutors as &$t) {
+            $t['hourly_rate'] = (float) $t['hourly_rate'];
+            $t['is_verified'] = (int) $t['is_verified'];
+        }
+
+        return $this->json($response, ['data' => $tutors], 200);
+    }
+
+    /**
      * GET /api/tutors/{id}
      * Full tutor profile: user info + all offerings + reviews.
      */

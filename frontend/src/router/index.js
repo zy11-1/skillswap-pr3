@@ -44,7 +44,7 @@ const routes = [
     path: '/tutor-dashboard',
     name: 'tutor-dashboard',
     component: () => import('@/views/tutor/TutorDashboardView.vue'),
-    meta: { requiresAuth: true, role: 'tutor' }
+    meta: { requiresAuth: true, tutorMode: true }
   },
   {
     path: '/admin',
@@ -73,6 +73,11 @@ router.beforeEach((to) => {
   }
 
   if (to.meta.role && auth.user?.role !== to.meta.role) {
+    return { name: 'marketplace' }
+  }
+
+  // Tutor-only screens require being in tutor mode (admins excepted).
+  if (to.meta.tutorMode && !auth.isTutorMode) {
     return { name: 'marketplace' }
   }
 

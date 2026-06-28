@@ -29,7 +29,7 @@ function formatDate(dateStr) {
           <span v-else>RM{{ wallet.balance.toFixed(2) }}</span>
         </h2>
         <p class="small mt-2 mb-0 opacity-75">
-          {{ auth.isTutor ? 'Earnings from teaching sessions' : 'Available for booking sessions' }}
+          {{ auth.isTutorMode ? 'Earnings from teaching sessions' : 'Available for booking sessions' }}
         </p>
       </div>
     </div>

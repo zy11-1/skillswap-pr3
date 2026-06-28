@@ -5,14 +5,18 @@ import { api } from '@/data/api'
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: localStorage.getItem('ss_token') || null,
-    user: JSON.parse(localStorage.getItem('ss_user') || 'null')
+    user: JSON.parse(localStorage.getItem('ss_user') || 'null'),
+    // The active "mode" of a dual-role account. Any non-admin user can
+    // switch between learning and tutoring; this is just UI state.
+    activeMode: localStorage.getItem('ss_mode') || 'learner'
   }),
 
   getters: {
     isLoggedIn: (state) => !!state.token,
-    isLearner: (state) => state.user?.role === 'learner',
-    isTutor: (state) => state.user?.role === 'tutor',
-    isAdmin: (state) => state.user?.role === 'admin'
+    isAdmin: (state) => state.user?.role === 'admin',
+    // Learner/Tutor are now modes you toggle, not fixed identities.
+    isLearnerMode: (state) => state.activeMode === 'learner',
+    isTutorMode: (state) => state.activeMode === 'tutor'
   },
 
   actions: {
@@ -33,13 +37,23 @@ export const useAuthStore = defineStore('auth', {
       this.user = user
       localStorage.setItem('ss_token', token)
       localStorage.setItem('ss_user', JSON.stringify(user))
+      // Start in the mode that matches how they registered, but they're
+      // free to switch afterwards. Admins stay in learner mode by default.
+      this.setMode(user?.role === 'tutor' ? 'tutor' : 'learner')
+    },
+
+    setMode(mode) {
+      this.activeMode = mode === 'tutor' ? 'tutor' : 'learner'
+      localStorage.setItem('ss_mode', this.activeMode)
     },
 
     logout() {
       this.token = null
       this.user = null
+      this.activeMode = 'learner'
       localStorage.removeItem('ss_token')
       localStorage.removeItem('ss_user')
+      localStorage.removeItem('ss_mode')
     }
   }
 })

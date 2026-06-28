@@ -51,6 +51,9 @@ function handleLogout() {
           <li class="nav-item">
             <router-link class="nav-link" to="/messages">Messages</router-link>
           </li>
+          <li class="nav-item">
+            <router-link class="nav-link" to="/group-classes">Group Classes</router-link>
+          </li>
           <li v-if="auth.isTutorMode" class="nav-item">
             <router-link class="nav-link" to="/tutor-dashboard">Tutor Dashboard</router-link>
           </li>

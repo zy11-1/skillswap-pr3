@@ -1,5 +1,5 @@
 <script setup>
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { useBookingStore } from '@/stores/booking'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/data/api'
@@ -106,6 +106,36 @@ async function uploadDocument() {
   }
 }
 
+// ---- Merit conversion ----
+const merits = ref({ merit_points: 0, wallet_balance: 0, rate: 10, requests: [] })
+const meritCredits = ref(10)
+const meritError = ref('')
+const requestingMerit = ref(false)
+
+async function loadMerits() {
+  try {
+    const res = await api.getMyMerits()
+    merits.value = res.data
+  } catch (err) {
+    console.error('Failed to load merits:', err)
+  }
+}
+
+const hasPendingMerit = computed(() => merits.value.requests?.some((r) => r.status === 'Pending'))
+
+async function requestMerit() {
+  meritError.value = ''
+  requestingMerit.value = true
+  try {
+    await api.requestMeritConversion(Number(meritCredits.value))
+    await loadMerits()
+  } catch (err) {
+    meritError.value = err.message || 'Could not submit request.'
+  } finally {
+    requestingMerit.value = false
+  }
+}
+
 async function loadAvailability() {
   loadingAvailability.value = true
   try {
@@ -150,6 +180,7 @@ onMounted(() => {
   loadAvailability()
   loadSkills()
   loadVerification()
+  loadMerits()
 })
 
 async function respond(bookingId, status) {
@@ -262,6 +293,59 @@ function formatDate(dateStr) {
     <div v-else class="text-center py-3 text-muted">
       <i class="bi bi-inbox" style="font-size: 2rem"></i>
       <p class="mt-2">No booking requests yet.</p>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- Merit conversion -->
+    <!-- ============================================================ -->
+    <div class="card border-0 shadow-sm mt-4">
+      <div class="card-header bg-white fw-bold">
+        <i class="bi bi-award me-2"></i>University Merit Points
+      </div>
+      <div class="card-body">
+        <div class="d-flex gap-4 mb-3">
+          <div>
+            <div class="small text-muted">Merit points earned</div>
+            <div class="h4 fw-bold mb-0 text-primary-ss">{{ merits.merit_points }}</div>
+          </div>
+          <div>
+            <div class="small text-muted">Credit balance</div>
+            <div class="h4 fw-bold mb-0">RM{{ merits.wallet_balance.toFixed(2) }}</div>
+          </div>
+        </div>
+        <p class="text-muted small mb-2">
+          Convert earned credits into official university merit points
+          ({{ merits.rate }} credits = 1 merit). An admin reviews each request.
+        </p>
+        <div v-if="meritError" class="alert alert-danger py-2 small">{{ meritError }}</div>
+        <div v-if="hasPendingMerit" class="alert alert-info py-2 small mb-2">
+          <i class="bi bi-hourglass-split me-1"></i>You have a merit request pending review.
+        </div>
+        <div v-else class="row g-2 align-items-end">
+          <div class="col-md-4">
+            <label class="form-label small">Credits to convert</label>
+            <input v-model.number="meritCredits" type="number" min="10" step="10" class="form-control form-control-sm" />
+          </div>
+          <div class="col-md-4">
+            <div class="small text-muted">≈ {{ Math.floor(meritCredits / merits.rate) }} merit point(s)</div>
+            <button class="btn btn-primary btn-sm w-100 mt-1" :disabled="requestingMerit" @click="requestMerit">
+              {{ requestingMerit ? '...' : 'Request conversion' }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="merits.requests && merits.requests.length" class="mt-3">
+          <div class="small text-muted mb-1">Recent requests</div>
+          <div v-for="r in merits.requests" :key="r.merit_request_id" class="small">
+            RM{{ Number(r.credits_amount).toFixed(2) }} → {{ r.merit_points }} merit(s)
+            <span class="badge ms-1" :class="{
+              'bg-warning text-dark': r.status === 'Pending',
+              'bg-success': r.status === 'Approved',
+              'bg-secondary': r.status === 'Rejected'
+            }">{{ r.status }}</span>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ============================================================ -->

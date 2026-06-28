@@ -5,21 +5,25 @@ import { api, apiBaseUrl } from '@/data/api'
 const pendingTutors = ref([])
 const allUsers = ref([])
 const docRequests = ref([])
+const meritRequests = ref([])
 const loading = ref(true)
 const verifyingId = ref(null)
 const reviewingId = ref(null)
+const meritReviewingId = ref(null)
 
 async function loadData() {
   loading.value = true
   try {
-    const [pendingRes, usersRes, docRes] = await Promise.all([
+    const [pendingRes, usersRes, docRes, meritRes] = await Promise.all([
       api.getPendingVerifications(),
       api.getAllUsers(),
-      api.getVerificationRequests()
+      api.getVerificationRequests(),
+      api.getMeritRequests()
     ])
     pendingTutors.value = pendingRes.data
     allUsers.value = usersRes.data
     docRequests.value = docRes.data
+    meritRequests.value = meritRes.data
   } finally {
     loading.value = false
   }
@@ -43,6 +47,16 @@ async function reviewDoc(requestId, status) {
     }
   } finally {
     reviewingId.value = null
+  }
+}
+
+async function reviewMerit(requestId, status) {
+  meritReviewingId.value = requestId
+  try {
+    await api.reviewMerit(requestId, status)
+    meritRequests.value = meritRequests.value.filter((r) => r.merit_request_id !== requestId)
+  } finally {
+    meritReviewingId.value = null
   }
 }
 
@@ -141,6 +155,49 @@ async function approve(userId) {
         </div>
       </div>
       <p v-else class="text-muted small mb-4">No document requests awaiting review.</p>
+
+      <!-- Merit conversion requests -->
+      <h6 class="fw-bold mb-3">Merit Conversion Requests</h6>
+      <div v-if="meritRequests.length" class="card border-0 shadow-sm mb-4">
+        <div class="table-responsive">
+          <table class="table mb-0 align-middle">
+            <thead>
+              <tr class="text-muted small">
+                <th>Name</th>
+                <th>Faculty</th>
+                <th>Credits</th>
+                <th>Merits</th>
+                <th class="text-end">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in meritRequests" :key="r.merit_request_id">
+                <td>{{ r.name }}</td>
+                <td>{{ r.faculty }}</td>
+                <td>RM{{ Number(r.credits_amount).toFixed(2) }}</td>
+                <td>{{ r.merit_points }}</td>
+                <td class="text-end">
+                  <button
+                    class="btn btn-success btn-sm me-1"
+                    :disabled="meritReviewingId === r.merit_request_id"
+                    @click="reviewMerit(r.merit_request_id, 'Approved')"
+                  >
+                    <i class="bi bi-check-lg"></i> Approve
+                  </button>
+                  <button
+                    class="btn btn-outline-danger btn-sm"
+                    :disabled="meritReviewingId === r.merit_request_id"
+                    @click="reviewMerit(r.merit_request_id, 'Rejected')"
+                  >
+                    Reject
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p v-else class="text-muted small mb-4">No merit conversion requests pending.</p>
 
       <!-- Pending verifications -->
       <h6 class="fw-bold mb-3">Pending Tutor Verifications</h6>

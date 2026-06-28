@@ -2,3 +2,7 @@
 .env
 *.log
 .DS_Store
+
+# Uploaded verification documents (keep dir, ignore files)
+public/uploads/*
+!public/uploads/.gitkeep

@@ -7,7 +7,8 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
 
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+export const apiBaseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8080'
+const baseURL = apiBaseUrl
 
 const http = axios.create({
   baseURL,
@@ -186,6 +187,39 @@ async addAvailability(data) {
   async deleteReview(reviewId) {
     try {
       const res = await http.delete(`/api/reviews/${reviewId}`)
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
+  // ---------- VERIFICATION ----------
+  async getVerificationStatus() {
+    const res = await http.get('/api/verification/me')
+    return res.data
+  },
+
+  async submitVerification(file) {
+    const formData = new FormData()
+    formData.append('document', file)
+    try {
+      const res = await http.post('/api/verification', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
+  async getVerificationRequests() {
+    const res = await http.get('/api/admin/verifications/requests')
+    return res.data
+  },
+
+  async reviewVerification(requestId, status) {
+    try {
+      const res = await http.patch(`/api/admin/verifications/requests/${requestId}`, { status })
       return res.data
     } catch (err) {
       throw unwrapError(err)

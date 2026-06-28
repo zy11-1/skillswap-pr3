@@ -11,7 +11,15 @@ const error = ref(null)
 const searchQuery = ref('')
 const selectedSkill = ref('')
 const selectedCategory = ref('')
+const selectedFaculty = ref('')
+const minRating = ref(0)
 const maxPrice = ref(50)
+
+// Faculties available among the loaded tutors (for the filter dropdown).
+const faculties = computed(() => {
+  const set = new Set(tutors.value.map((t) => t.tutor_faculty).filter(Boolean))
+  return [...set].sort()
+})
 
 async function loadData() {
   loading.value = true
@@ -46,9 +54,11 @@ const filteredTutors = computed(() => {
 
     const matchesSkill = !selectedSkill.value || t.skill_id === Number(selectedSkill.value)
     const matchesCategory = !selectedCategory.value || t.skill_category === selectedCategory.value
+    const matchesFaculty = !selectedFaculty.value || t.tutor_faculty === selectedFaculty.value
+    const matchesRating = !minRating.value || (Number(t.avg_rating) || 0) >= minRating.value
     const matchesPrice = t.hourly_rate <= maxPrice.value
 
-    return matchesSearch && matchesSkill && matchesCategory && matchesPrice
+    return matchesSearch && matchesSkill && matchesCategory && matchesFaculty && matchesRating && matchesPrice
   })
 })
 
@@ -56,6 +66,8 @@ function resetFilters() {
   searchQuery.value = ''
   selectedSkill.value = ''
   selectedCategory.value = ''
+  selectedFaculty.value = ''
+  minRating.value = 0
   maxPrice.value = 50
 }
 </script>
@@ -100,6 +112,24 @@ function resetFilters() {
           <div class="col-md-2">
             <label class="form-label small">Max RM{{ maxPrice }}/hr</label>
             <input v-model="maxPrice" type="range" class="form-range" min="5" max="50" step="1" />
+          </div>
+        </div>
+        <div class="row g-3 mt-0">
+          <div class="col-md-3">
+            <label class="form-label small">Faculty</label>
+            <select v-model="selectedFaculty" class="form-select">
+              <option value="">All faculties</option>
+              <option v-for="f in faculties" :key="f" :value="f">{{ f }}</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small">Minimum rating</label>
+            <select v-model.number="minRating" class="form-select">
+              <option :value="0">Any rating</option>
+              <option :value="3">3+ stars</option>
+              <option :value="4">4+ stars</option>
+              <option :value="4.5">4.5+ stars</option>
+            </select>
           </div>
         </div>
         <button class="btn btn-link btn-sm px-0 mt-2" @click="resetFilters">

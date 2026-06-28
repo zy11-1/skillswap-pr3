@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useBookingStore } from '@/stores/booking'
 import { api } from '@/data/api'
 import ReviewModal from '@/components/review/ReviewModal.vue'
+import { downloadBookingIcs } from '@/utils/ics'
 
 const auth = useAuthStore()
 const bookingStore = useBookingStore()
@@ -104,7 +105,17 @@ function formatDate(dateStr) {
           <tr v-for="b in filteredBookings" :key="b.booking_id">
             <td>{{ auth.isTutorMode ? b.learner_name : b.tutor_name }}</td>
             <td>{{ b.skill_name }}</td>
-            <td class="small">{{ formatDate(b.booking_date) }}</td>
+            <td class="small">
+              {{ formatDate(b.booking_date) }}
+              <button
+                v-if="b.status === 'Accepted' || b.status === 'Completed'"
+                class="btn btn-link btn-sm p-0 ms-1"
+                title="Add to calendar (.ics)"
+                @click="downloadBookingIcs(b)"
+              >
+                <i class="bi bi-calendar-plus"></i>
+              </button>
+            </td>
             <td>{{ b.duration }}h</td>
             <td>RM{{ b.total_amount.toFixed(2) }}</td>
             <td><span :class="statusClass(b.status)">{{ b.status }}</span></td>

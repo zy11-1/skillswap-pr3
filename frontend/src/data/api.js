@@ -126,6 +126,39 @@ async addAvailability(data) {
     }
   },
 
+  // ---------- REVIEWS ----------
+  async getTutorReviews(tutorId) {
+    const res = await http.get(`/api/tutors/${tutorId}/reviews`)
+    return res.data
+  },
+
+  async createReview(payload) {
+    try {
+      const res = await http.post('/api/reviews', payload)
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
+  async updateReview(reviewId, payload) {
+    try {
+      const res = await http.patch(`/api/reviews/${reviewId}`, payload)
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
+  async deleteReview(reviewId) {
+    try {
+      const res = await http.delete(`/api/reviews/${reviewId}`)
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
   // ---------- WALLET ----------
   async getWalletBalance() {
     const res = await http.get('/api/wallet')

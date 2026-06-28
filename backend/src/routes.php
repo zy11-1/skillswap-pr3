@@ -4,6 +4,7 @@ declare(strict_types=1);
 use App\Controllers\AdminController;
 use App\Controllers\AuthController;
 use App\Controllers\BookingController;
+use App\Controllers\ReviewController;
 use App\Controllers\TutorController;
 use App\Controllers\WalletController;
 use App\Middleware\JwtAuthMiddleware;
@@ -44,6 +45,18 @@ return function (App $app) {
 $app->get('/api/tutors/{id}/availability', [TutorController::class, 'getAvailability']);
 $app->post('/api/tutor/availability', [TutorController::class, 'addAvailability'])
     ->add($jwtMiddleware);
+
+    // ---------------------------------------------------------------
+    // Reviews & ratings
+    // Reading a tutor's reviews is public; creating/editing/deleting
+    // requires being logged in (the controller checks you own it).
+    // ---------------------------------------------------------------
+    $app->get('/api/tutors/{id}/reviews', [ReviewController::class, 'tutorReviews']);
+    $app->group('/api/reviews', function ($group) {
+        $group->post('', [ReviewController::class, 'create']);
+        $group->patch('/{id}', [ReviewController::class, 'update']);
+        $group->delete('/{id}', [ReviewController::class, 'delete']);
+    })->add($jwtMiddleware);
 
     // ---------------------------------------------------------------
     // Bookings (requires JWT)

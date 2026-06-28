@@ -78,6 +78,7 @@ $app->post('/api/tutor/availability', [TutorController::class, 'addAvailability'
         $group->get('', [BookingController::class, 'index']);
         $group->post('', [BookingController::class, 'create']);
         $group->patch('/{id}/status', [BookingController::class, 'updateStatus']);
+        $group->patch('/{id}/recording', [BookingController::class, 'setRecording']);
     })->add($jwtMiddleware);
 
     // ---------------------------------------------------------------

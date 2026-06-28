@@ -118,7 +118,19 @@ function formatDate(dateStr) {
             </td>
             <td>{{ b.duration }}h</td>
             <td>RM{{ b.total_amount.toFixed(2) }}</td>
-            <td><span :class="statusClass(b.status)">{{ b.status }}</span></td>
+            <td>
+              <span :class="statusClass(b.status)">{{ b.status }}</span>
+              <a
+                v-if="b.recording_url"
+                :href="b.recording_url"
+                target="_blank"
+                rel="noopener"
+                class="d-block small mt-1"
+                title="Watch session recording"
+              >
+                <i class="bi bi-camera-video me-1"></i>Watch recording
+              </a>
+            </td>
             <td v-if="!auth.isTutorMode">
               <!-- Reviews only make sense once a session is Completed -->
               <template v-if="b.status === 'Completed'">

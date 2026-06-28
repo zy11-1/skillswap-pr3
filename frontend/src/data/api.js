@@ -165,6 +165,15 @@ async addAvailability(data) {
     }
   },
 
+  async setBookingRecording(bookingId, recordingUrl) {
+    try {
+      const res = await http.patch(`/api/bookings/${bookingId}/recording`, { recording_url: recordingUrl })
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
   // ---------- REVIEWS ----------
   async getTutorReviews(tutorId) {
     const res = await http.get(`/api/tutors/${tutorId}/reviews`)

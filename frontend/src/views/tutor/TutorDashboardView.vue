@@ -161,6 +161,23 @@ async function respond(bookingId, status) {
   }
 }
 
+// ---- Recording vault ----
+const recordingDrafts = ref({})
+const savingRecording = ref(null)
+
+async function saveRecording(booking) {
+  const url = (recordingDrafts.value[booking.booking_id] ?? booking.recording_url ?? '').trim()
+  savingRecording.value = booking.booking_id
+  try {
+    await api.setBookingRecording(booking.booking_id, url)
+    await bookingStore.fetchBookings()
+  } catch (err) {
+    alert(err.message || 'Could not save recording link.')
+  } finally {
+    savingRecording.value = null
+  }
+}
+
 function statusClass(status) {
   return `status-pill status-${status.toLowerCase()}`
 }
@@ -220,6 +237,23 @@ function formatDate(dateStr) {
             >
               Mark as Completed
             </button>
+
+            <!-- Recording vault: attach a session recording link -->
+            <div v-if="b.status === 'Completed'" class="mt-2">
+              <label class="form-label small mb-1"><i class="bi bi-camera-video me-1"></i>Session recording link</label>
+              <div class="input-group input-group-sm">
+                <input
+                  :value="recordingDrafts[b.booking_id] ?? b.recording_url ?? ''"
+                  type="url"
+                  class="form-control"
+                  placeholder="https://meet.google.com/..."
+                  @input="recordingDrafts[b.booking_id] = $event.target.value"
+                />
+                <button class="btn btn-outline-primary" :disabled="savingRecording === b.booking_id" @click="saveRecording(b)">
+                  {{ savingRecording === b.booking_id ? '...' : 'Save' }}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>

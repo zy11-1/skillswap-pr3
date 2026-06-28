@@ -5,6 +5,7 @@ import TutorCard from '@/components/tutor/TutorCard.vue'
 
 const tutors = ref([])
 const skills = ref([])
+const trending = ref([])
 const loading = ref(true)
 const error = ref(null)
 
@@ -26,14 +27,16 @@ async function loadData() {
   error.value = null
 
   try {
-    const [tutorsRes, skillsRes] = await Promise.all([
+    const [tutorsRes, skillsRes, trendingRes] = await Promise.all([
       api.getTutors(),
-      api.getSkills()
+      api.getSkills(),
+      api.getTrendingSkills()
     ])
 
     // api.getTutors() returns { data: [...] }
     tutors.value = tutorsRes.data || []
     skills.value = skillsRes.data || []
+    trending.value = trendingRes.data || []
   } catch (err) {
     error.value = 'Failed to load data. Please check that the backend is running.'
     console.error('Failed to load data:', err)
@@ -77,6 +80,21 @@ function resetFilters() {
     <div class="mb-4">
       <h3 class="fw-bold">Find a Tutor</h3>
       <p class="text-muted">Browse skills offered by your fellow students</p>
+    </div>
+
+    <!-- Trending skills -->
+    <div v-if="trending.length" class="mb-3">
+      <span class="small text-muted me-2"><i class="bi bi-graph-up-arrow me-1"></i>Trending:</span>
+      <button
+        v-for="t in trending"
+        :key="t.skill_id"
+        class="btn btn-sm me-1 mb-1"
+        :class="Number(selectedSkill) === t.skill_id ? 'btn-primary' : 'btn-outline-primary'"
+        @click="selectedSkill = String(t.skill_id)"
+      >
+        {{ t.name }}
+        <span v-if="t.booking_count" class="badge bg-light text-dark ms-1">{{ t.booking_count }}</span>
+      </button>
     </div>
 
     <!-- Search & Filters -->

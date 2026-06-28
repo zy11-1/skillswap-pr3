@@ -41,6 +41,7 @@ return function (App $app) {
     $app->get('/api/tutors', [TutorController::class, 'index']);
     $app->get('/api/tutors/{id}', [TutorController::class, 'show']);
     $app->get('/api/skills', [TutorController::class, 'skills']);
+    $app->get('/api/skills/trending', [TutorController::class, 'trendingSkills']);
     // ---------------------------------------------------------------
 // Tutor Availability
 // ---------------------------------------------------------------

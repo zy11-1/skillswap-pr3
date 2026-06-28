@@ -136,6 +136,11 @@ async addAvailability(data) {
     return res.data
   },
 
+  async getTrendingSkills() {
+    const res = await http.get('/api/skills/trending')
+    return res.data
+  },
+
   // ---------- BOOKINGS ----------
   async getBookings(mode = 'learner') {
     const res = await http.get('/api/bookings', { params: { as: mode } })

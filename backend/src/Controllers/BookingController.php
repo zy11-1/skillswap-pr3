@@ -30,11 +30,13 @@ class BookingController
         $column = $role === 'tutor' ? 'b.tutor_id' : 'b.learner_id';
 
         $stmt = $db->prepare("
-            SELECT b.*, learner.name AS learner_name, tutor.name AS tutor_name, s.name AS skill_name
+            SELECT b.*, learner.name AS learner_name, tutor.name AS tutor_name, s.name AS skill_name,
+                   r.review_id, r.rating AS review_rating, r.comment AS review_comment
             FROM Booking b
             JOIN User learner ON learner.user_id = b.learner_id
             JOIN User tutor ON tutor.user_id = b.tutor_id
             JOIN Skill s ON s.skill_id = b.skill_id
+            LEFT JOIN Review r ON r.booking_id = b.booking_id
             WHERE $column = :user_id
             ORDER BY b.booking_date DESC
         ");
@@ -44,6 +46,8 @@ class BookingController
         foreach ($bookings as &$b) {
             $b['total_amount'] = (float) $b['total_amount'];
             $b['duration'] = (int) $b['duration'];
+            $b['review_id'] = $b['review_id'] !== null ? (int) $b['review_id'] : null;
+            $b['review_rating'] = $b['review_rating'] !== null ? (int) $b['review_rating'] : null;
         }
 
         return $this->json($response, ['data' => $bookings], 200);

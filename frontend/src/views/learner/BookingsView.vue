@@ -2,6 +2,8 @@
 import { ref, computed, onMounted } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { useBookingStore } from '@/stores/booking'
+import { api } from '@/data/api'
+import ReviewModal from '@/components/review/ReviewModal.vue'
 
 const auth = useAuthStore()
 const bookingStore = useBookingStore()
@@ -9,9 +11,31 @@ const bookingStore = useBookingStore()
 const statusFilter = ref('All')
 const statuses = ['All', 'Pending', 'Accepted', 'Completed', 'Cancelled']
 
+// Review modal state (learners only)
+const reviewingBooking = ref(null)
+
 onMounted(() => {
   bookingStore.fetchBookings()
 })
+
+function openReview(booking) {
+  reviewingBooking.value = booking
+}
+
+function handleReviewSaved() {
+  reviewingBooking.value = null
+  bookingStore.fetchBookings()
+}
+
+async function deleteReview(booking) {
+  if (!confirm('Delete your review for this session?')) return
+  try {
+    await api.deleteReview(booking.review_id)
+    bookingStore.fetchBookings()
+  } catch (err) {
+    alert(err.message || 'Could not delete review.')
+  }
+}
 
 const filteredBookings = computed(() => {
   if (statusFilter.value === 'All') return bookingStore.bookings
@@ -61,6 +85,7 @@ function formatDate(dateStr) {
             <th>Duration</th>
             <th>Amount</th>
             <th>Status</th>
+            <th v-if="!auth.isTutor">Review</th>
           </tr>
         </thead>
         <tbody>
@@ -71,6 +96,22 @@ function formatDate(dateStr) {
             <td>{{ b.duration }}h</td>
             <td>RM{{ b.total_amount.toFixed(2) }}</td>
             <td><span :class="statusClass(b.status)">{{ b.status }}</span></td>
+            <td v-if="!auth.isTutor">
+              <!-- Reviews only make sense once a session is Completed -->
+              <template v-if="b.status === 'Completed'">
+                <div v-if="b.review_id" class="d-flex align-items-center gap-2">
+                  <span class="text-warning small">
+                    <i v-for="n in 5" :key="n" class="bi" :class="n <= b.review_rating ? 'bi-star-fill' : 'bi-star'"></i>
+                  </span>
+                  <button class="btn btn-sm btn-outline-secondary" @click="openReview(b)">Edit</button>
+                  <button class="btn btn-sm btn-outline-danger" @click="deleteReview(b)">Delete</button>
+                </div>
+                <button v-else class="btn btn-sm btn-primary" @click="openReview(b)">
+                  <i class="bi bi-star me-1"></i>Leave a review
+                </button>
+              </template>
+              <span v-else class="text-muted small">—</span>
+            </td>
           </tr>
         </tbody>
       </table>
@@ -83,5 +124,12 @@ function formatDate(dateStr) {
         Browse Tutors
       </router-link>
     </div>
+
+    <ReviewModal
+      v-if="reviewingBooking"
+      :booking="reviewingBooking"
+      @close="reviewingBooking = null"
+      @saved="handleReviewSaved"
+    />
   </div>
 </template>

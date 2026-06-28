@@ -14,9 +14,21 @@ const statuses = ['All', 'Pending', 'Accepted', 'Completed', 'Cancelled']
 // Review modal state (learners only)
 const reviewingBooking = ref(null)
 
-onMounted(() => {
-  bookingStore.fetchBookings()
+onMounted(async () => {
+  await bookingStore.fetchBookings()
+  promptForPendingReview()
 })
+
+// Forced review prompt (§6.1.5): once a session is Completed and hasn't
+// been reviewed, automatically open the review modal for it. Learner mode
+// only — a tutor isn't the one leaving the review.
+function promptForPendingReview() {
+  if (auth.isTutorMode) return
+  const needsReview = bookingStore.bookings.find(
+    (b) => b.status === 'Completed' && !b.review_id
+  )
+  if (needsReview) reviewingBooking.value = needsReview
+}
 
 function openReview(booking) {
   reviewingBooking.value = booking

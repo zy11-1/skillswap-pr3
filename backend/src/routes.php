@@ -39,6 +39,7 @@ return function (App $app) {
     // booking itself requires auth, handled below)
     // ---------------------------------------------------------------
     $app->get('/api/tutors', [TutorController::class, 'index']);
+    $app->get('/api/tutors/recommended', [TutorController::class, 'recommended'])->add($jwtMiddleware);
     $app->get('/api/tutors/{id}', [TutorController::class, 'show']);
     $app->get('/api/skills', [TutorController::class, 'skills']);
     $app->get('/api/skills/trending', [TutorController::class, 'trendingSkills']);

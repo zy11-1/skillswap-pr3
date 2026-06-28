@@ -131,6 +131,11 @@ async addAvailability(data) {
     return res.data
   },
 
+  async getRecommendedTutors() {
+    const res = await http.get('/api/tutors/recommended')
+    return res.data
+  },
+
   async getSkills() {
     const res = await http.get('/api/skills')
     return res.data

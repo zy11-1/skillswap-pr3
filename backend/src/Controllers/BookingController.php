@@ -209,6 +209,42 @@ class BookingController
         return $this->json($response, ['data' => $updated], 200);
     }
 
+    /**
+     * PATCH /api/bookings/{id}/recording (requires JWT, tutor of the booking)
+     * Body: { recording_url }
+     * Stores an unlisted Zoom/Meet recording link in the booking so the
+     * learner can rewatch the session (Stretch §6.3.1, Recording Vault).
+     */
+    public function setRecording(Request $request, Response $response, array $args): Response
+    {
+        $bookingId = (int) $args['id'];
+        $userId = (int) $request->getAttribute('user_id');
+        $data = (array) $request->getParsedBody();
+        $url = trim((string) ($data['recording_url'] ?? ''));
+
+        if ($url !== '' && !filter_var($url, FILTER_VALIDATE_URL)) {
+            return $this->json($response, ['error' => 'recording_url must be a valid URL.'], 422);
+        }
+
+        $db = Database::getConnection();
+        $booking = $this->fetchBookingById($db, $bookingId);
+
+        if (!$booking) {
+            return $this->json($response, ['error' => 'Booking not found.'], 404);
+        }
+        if ((int) $booking['tutor_id'] !== $userId) {
+            return $this->json($response, ['error' => 'Only the tutor for this session can add a recording.'], 403);
+        }
+        if ($booking['status'] !== 'Completed') {
+            return $this->json($response, ['error' => 'You can only attach a recording to a Completed session.'], 422);
+        }
+
+        $stmt = $db->prepare('UPDATE Booking SET recording_url = :url WHERE booking_id = :id');
+        $stmt->execute(['url' => $url === '' ? null : $url, 'id' => $bookingId]);
+
+        return $this->json($response, ['data' => $this->fetchBookingById($db, $bookingId)], 200);
+    }
+
     private function fetchBookingById(\PDO $db, int $id): ?array
     {
         $stmt = $db->prepare('SELECT * FROM Booking WHERE booking_id = :id');

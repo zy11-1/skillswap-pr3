@@ -4,6 +4,7 @@ declare(strict_types=1);
 use App\Controllers\AdminController;
 use App\Controllers\AuthController;
 use App\Controllers\BookingController;
+use App\Controllers\MeritController;
 use App\Controllers\MessageController;
 use App\Controllers\ReviewController;
 use App\Controllers\TutorController;
@@ -100,6 +101,14 @@ $app->post('/api/tutor/availability', [TutorController::class, 'addAvailability'
     })->add($jwtMiddleware);
 
     // ---------------------------------------------------------------
+    // Merit conversion (tutor converts credits -> university merits)
+    // ---------------------------------------------------------------
+    $app->group('/api/merits', function ($group) {
+        $group->post('', [MeritController::class, 'request']);
+        $group->get('/me', [MeritController::class, 'myMerits']);
+    })->add($jwtMiddleware);
+
+    // ---------------------------------------------------------------
     // Wallet (requires JWT)
     // ---------------------------------------------------------------
     $app->group('/api/wallet', function ($group) {
@@ -116,6 +125,8 @@ $app->post('/api/tutor/availability', [TutorController::class, 'addAvailability'
         $group->get('/verifications/requests', [AdminController::class, 'verificationRequests']);
         $group->patch('/verifications/requests/{id}', [AdminController::class, 'reviewVerification']);
         $group->patch('/users/{id}/verify', [AdminController::class, 'verifyTutor']);
+        $group->get('/merits', [MeritController::class, 'adminList']);
+        $group->patch('/merits/{id}', [MeritController::class, 'adminReview']);
     })
         ->add(new RoleMiddleware(['admin']))
         ->add($jwtMiddleware);

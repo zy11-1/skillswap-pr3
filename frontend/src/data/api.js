@@ -232,6 +232,35 @@ async addAvailability(data) {
     }
   },
 
+  // ---------- MERITS ----------
+  async getMyMerits() {
+    const res = await http.get('/api/merits/me')
+    return res.data
+  },
+
+  async requestMeritConversion(credits) {
+    try {
+      const res = await http.post('/api/merits', { credits })
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
+  async getMeritRequests() {
+    const res = await http.get('/api/admin/merits')
+    return res.data
+  },
+
+  async reviewMerit(requestId, status) {
+    try {
+      const res = await http.patch(`/api/admin/merits/${requestId}`, { status })
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
   // ---------- VERIFICATION ----------
   async getVerificationStatus() {
     const res = await http.get('/api/verification/me')

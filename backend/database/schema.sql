@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS User (
     bio             TEXT NULL,
     wallet_balance  DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     is_verified     TINYINT(1) NOT NULL DEFAULT 0,
+    merit_points    INT NOT NULL DEFAULT 0,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -129,6 +130,19 @@ CREATE TABLE IF NOT EXISTS TutorAvailability (
     end_time TIME NOT NULL,
     CONSTRAINT fk_availability_tutor FOREIGN KEY (tutor_id) REFERENCES User(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
+-- ---------------------------------------------------------------
+-- 10. MeritRequest (tutor converts platform credits -> university merits)
+-- ---------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS MeritRequest (
+    merit_request_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id          INT NOT NULL,
+    credits_amount   DECIMAL(10,2) NOT NULL,
+    merit_points     INT NOT NULL,
+    status           ENUM('Pending', 'Approved', 'Rejected') NOT NULL DEFAULT 'Pending',
+    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_merit_user FOREIGN KEY (user_id) REFERENCES User(user_id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
 -- =================================================================
 -- SEED DATA (matches the mock JSON used in PR2, so demo accounts
 -- behave the same way once you switch from mock data to this DB)

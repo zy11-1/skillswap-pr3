@@ -10,13 +10,64 @@ const updatingId = ref(null)
 
 // ---- Availability ----
 const availability = ref([])
-const newSlot = ref({ 
-  available_date: new Date().toISOString().split('T')[0], 
-  start_time: '09:00', 
-  end_time: '17:00' 
+const newSlot = ref({
+  available_date: new Date().toISOString().split('T')[0],
+  start_time: '09:00',
+  end_time: '17:00'
 })
 const saving = ref(false)
 const loadingAvailability = ref(false)
+
+// ---- Skill offerings ----
+const mySkills = ref([])
+const allSkills = ref([])
+const newOffering = ref({ skill_id: '', hourly_rate: 10, level: 'Intermediate', description: '' })
+const savingSkill = ref(false)
+const skillError = ref('')
+const levels = ['Beginner', 'Intermediate', 'Advanced', 'Native']
+
+async function loadSkills() {
+  try {
+    const [mine, all] = await Promise.all([api.getMySkills(), api.getSkills()])
+    mySkills.value = mine.data || []
+    allSkills.value = all.data || []
+  } catch (err) {
+    console.error('Failed to load skills:', err)
+  }
+}
+
+async function addOffering() {
+  skillError.value = ''
+  if (!newOffering.value.skill_id || newOffering.value.hourly_rate <= 0 || !newOffering.value.description) {
+    skillError.value = 'Pick a skill, set a rate, and add a short description.'
+    return
+  }
+  savingSkill.value = true
+  try {
+    await api.addMySkill({
+      skill_id: Number(newOffering.value.skill_id),
+      hourly_rate: Number(newOffering.value.hourly_rate),
+      level: newOffering.value.level,
+      description: newOffering.value.description
+    })
+    newOffering.value = { skill_id: '', hourly_rate: 10, level: 'Intermediate', description: '' }
+    await loadSkills()
+  } catch (err) {
+    skillError.value = err.message || 'Could not add skill.'
+  } finally {
+    savingSkill.value = false
+  }
+}
+
+async function removeOffering(userSkillId) {
+  if (!confirm('Remove this skill offering?')) return
+  try {
+    await api.deleteMySkill(userSkillId)
+    await loadSkills()
+  } catch (err) {
+    alert(err.message || 'Could not remove skill.')
+  }
+}
 
 async function loadAvailability() {
   loadingAvailability.value = true
@@ -60,6 +111,7 @@ function removeSlot(id) {
 onMounted(() => {
   bookingStore.fetchBookings()
   loadAvailability()
+  loadSkills()
 })
 
 async function respond(bookingId, status) {
@@ -138,6 +190,72 @@ function formatDate(dateStr) {
     <div v-else class="text-center py-3 text-muted">
       <i class="bi bi-inbox" style="font-size: 2rem"></i>
       <p class="mt-2">No booking requests yet.</p>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- My Skill Offerings -->
+    <!-- ============================================================ -->
+    <div class="card border-0 shadow-sm mt-4">
+      <div class="card-header bg-white fw-bold">
+        <i class="bi bi-easel me-2"></i>My Skills &amp; Rates
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          Add the skills you want to teach. These appear in the Marketplace so learners can book you.
+        </p>
+
+        <div v-if="skillError" class="alert alert-danger py-2 small">{{ skillError }}</div>
+
+        <!-- Existing offerings -->
+        <div v-if="mySkills.length" class="mb-3">
+          <div
+            v-for="s in mySkills"
+            :key="s.userskill_id"
+            class="d-flex align-items-center justify-content-between bg-light p-2 rounded mb-1"
+          >
+            <div>
+              <strong>{{ s.skill_name }}</strong>
+              <span class="badge bg-white text-dark border ms-1">{{ s.level }}</span>
+              <span class="text-primary-ss fw-semibold ms-2">RM{{ s.hourly_rate.toFixed(2) }}/hr</span>
+              <div class="small text-muted">{{ s.description }}</div>
+            </div>
+            <button class="btn btn-sm btn-outline-danger" @click="removeOffering(s.userskill_id)">
+              <i class="bi bi-trash"></i>
+            </button>
+          </div>
+        </div>
+        <p v-else class="text-muted small">You don't offer any skills yet — add one below.</p>
+
+        <!-- Add offering -->
+        <div class="row g-2 align-items-end">
+          <div class="col-md-3">
+            <label class="form-label small">Skill</label>
+            <select v-model="newOffering.skill_id" class="form-select form-select-sm">
+              <option value="" disabled>Select a skill</option>
+              <option v-for="sk in allSkills" :key="sk.skill_id" :value="sk.skill_id">{{ sk.name }}</option>
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small">Rate (RM/hr)</label>
+            <input v-model.number="newOffering.hourly_rate" type="number" min="1" step="0.5" class="form-control form-control-sm" />
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small">Level</label>
+            <select v-model="newOffering.level" class="form-select form-select-sm">
+              <option v-for="lv in levels" :key="lv" :value="lv">{{ lv }}</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small">Description</label>
+            <input v-model="newOffering.description" type="text" class="form-control form-control-sm" placeholder="What you cover" />
+          </div>
+          <div class="col-md-2">
+            <button class="btn btn-primary btn-sm w-100" :disabled="savingSkill" @click="addOffering">
+              {{ savingSkill ? '...' : 'Add Skill' }}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- ============================================================ -->

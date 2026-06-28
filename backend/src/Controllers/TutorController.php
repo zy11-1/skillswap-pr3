@@ -190,6 +190,141 @@ class TutorController
         return $this->json($response, ['data' => ['availability_id' => $id]], 201);
     }
 
+    /**
+     * GET /api/tutor/skills (requires JWT)
+     * The logged-in user's own skill offerings, for the Tutor dashboard.
+     */
+    public function mySkills(Request $request, Response $response): Response
+    {
+        $userId = (int) $request->getAttribute('user_id');
+        $db = Database::getConnection();
+
+        $stmt = $db->prepare(
+            'SELECT us.userskill_id, us.skill_id, us.hourly_rate, us.level, us.description,
+                    s.name AS skill_name, s.category AS skill_category
+             FROM UserSkill us JOIN Skill s ON s.skill_id = us.skill_id
+             WHERE us.user_id = :id
+             ORDER BY s.name'
+        );
+        $stmt->execute(['id' => $userId]);
+        $skills = $stmt->fetchAll();
+        foreach ($skills as &$s) {
+            $s['hourly_rate'] = (float) $s['hourly_rate'];
+        }
+
+        return $this->json($response, ['data' => $skills], 200);
+    }
+
+    /**
+     * POST /api/tutor/skills (requires JWT)
+     * Body: { skill_id, hourly_rate, level, description }
+     * Adds an offering for the logged-in user (i.e. makes them a tutor
+     * for that skill). One offering per skill per user.
+     */
+    public function addSkill(Request $request, Response $response): Response
+    {
+        $userId = (int) $request->getAttribute('user_id');
+        $data = (array) $request->getParsedBody();
+
+        $skillId = (int) ($data['skill_id'] ?? 0);
+        $hourlyRate = (float) ($data['hourly_rate'] ?? 0);
+        $level = trim((string) ($data['level'] ?? ''));
+        $description = trim((string) ($data['description'] ?? ''));
+
+        if (!$skillId || $hourlyRate <= 0 || $level === '' || $description === '') {
+            return $this->json($response, ['error' => 'skill_id, hourly_rate, level and description are required.'], 422);
+        }
+
+        $db = Database::getConnection();
+
+        // Skill must exist
+        $stmt = $db->prepare('SELECT skill_id FROM Skill WHERE skill_id = :id');
+        $stmt->execute(['id' => $skillId]);
+        if (!$stmt->fetch()) {
+            return $this->json($response, ['error' => 'That skill does not exist.'], 404);
+        }
+
+        // Prevent duplicate offering of the same skill by the same user
+        $stmt = $db->prepare('SELECT userskill_id FROM UserSkill WHERE user_id = :uid AND skill_id = :sid');
+        $stmt->execute(['uid' => $userId, 'sid' => $skillId]);
+        if ($stmt->fetch()) {
+            return $this->json($response, ['error' => 'You already offer this skill.'], 409);
+        }
+
+        $stmt = $db->prepare(
+            'INSERT INTO UserSkill (user_id, skill_id, hourly_rate, level, description)
+             VALUES (:uid, :sid, :rate, :level, :description)'
+        );
+        $stmt->execute([
+            'uid' => $userId, 'sid' => $skillId, 'rate' => $hourlyRate,
+            'level' => $level, 'description' => $description,
+        ]);
+
+        return $this->json($response, ['data' => ['userskill_id' => (int) $db->lastInsertId()]], 201);
+    }
+
+    /**
+     * PATCH /api/tutor/skills/{id} (requires JWT, owner only)
+     * Body: { hourly_rate?, level?, description? }
+     */
+    public function updateSkill(Request $request, Response $response, array $args): Response
+    {
+        $userId = (int) $request->getAttribute('user_id');
+        $userSkillId = (int) $args['id'];
+        $data = (array) $request->getParsedBody();
+
+        $db = Database::getConnection();
+        $stmt = $db->prepare('SELECT * FROM UserSkill WHERE userskill_id = :id');
+        $stmt->execute(['id' => $userSkillId]);
+        $offering = $stmt->fetch();
+
+        if (!$offering) {
+            return $this->json($response, ['error' => 'Offering not found.'], 404);
+        }
+        if ((int) $offering['user_id'] !== $userId) {
+            return $this->json($response, ['error' => 'You can only edit your own offerings.'], 403);
+        }
+
+        $hourlyRate = array_key_exists('hourly_rate', $data) ? (float) $data['hourly_rate'] : (float) $offering['hourly_rate'];
+        $level = array_key_exists('level', $data) ? trim((string) $data['level']) : (string) $offering['level'];
+        $description = array_key_exists('description', $data) ? trim((string) $data['description']) : (string) $offering['description'];
+
+        if ($hourlyRate <= 0 || $level === '' || $description === '') {
+            return $this->json($response, ['error' => 'hourly_rate, level and description cannot be empty.'], 422);
+        }
+
+        $stmt = $db->prepare('UPDATE UserSkill SET hourly_rate = :rate, level = :level, description = :description WHERE userskill_id = :id');
+        $stmt->execute(['rate' => $hourlyRate, 'level' => $level, 'description' => $description, 'id' => $userSkillId]);
+
+        return $this->json($response, ['data' => ['userskill_id' => $userSkillId]], 200);
+    }
+
+    /**
+     * DELETE /api/tutor/skills/{id} (requires JWT, owner only)
+     */
+    public function deleteSkill(Request $request, Response $response, array $args): Response
+    {
+        $userId = (int) $request->getAttribute('user_id');
+        $userSkillId = (int) $args['id'];
+
+        $db = Database::getConnection();
+        $stmt = $db->prepare('SELECT user_id FROM UserSkill WHERE userskill_id = :id');
+        $stmt->execute(['id' => $userSkillId]);
+        $offering = $stmt->fetch();
+
+        if (!$offering) {
+            return $this->json($response, ['error' => 'Offering not found.'], 404);
+        }
+        if ((int) $offering['user_id'] !== $userId) {
+            return $this->json($response, ['error' => 'You can only remove your own offerings.'], 403);
+        }
+
+        $stmt = $db->prepare('DELETE FROM UserSkill WHERE userskill_id = :id');
+        $stmt->execute(['id' => $userSkillId]);
+
+        return $this->json($response, ['data' => ['deleted' => true]], 200);
+    }
+
     private function json(Response $response, array $data, int $status): Response
     {
         $response->getBody()->write((string) json_encode($data));

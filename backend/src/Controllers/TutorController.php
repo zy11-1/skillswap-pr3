@@ -340,6 +340,139 @@ class TutorController
     }
 
     /**
+     * PATCH /api/tutor/availability/{id} (requires JWT, owner only)
+     * Edit a slot's capacity, mode and details — but NOT its time. To move
+     * a session to a different time the tutor cancels and posts a new slot.
+     * Body: { capacity?, mode?, meeting_link?, location?, resources?, outcomes? }
+     */
+    public function updateAvailability(Request $request, Response $response, array $args): Response
+    {
+        $userId = (int) $request->getAttribute('user_id');
+        $availabilityId = (int) $args['id'];
+        $data = (array) $request->getParsedBody();
+
+        $db = Database::getConnection();
+        $stmt = $db->prepare('SELECT * FROM TutorAvailability WHERE availability_id = :id');
+        $stmt->execute(['id' => $availabilityId]);
+        $slot = $stmt->fetch();
+
+        if (!$slot) {
+            return $this->json($response, ['error' => 'Slot not found.'], 404);
+        }
+        if ((int) $slot['tutor_id'] !== $userId) {
+            return $this->json($response, ['error' => 'You can only edit your own availability.'], 403);
+        }
+
+        $capacity = array_key_exists('capacity', $data) ? (int) $data['capacity'] : (int) $slot['capacity'];
+        $mode = array_key_exists('mode', $data) ? (($data['mode'] === 'Online') ? 'Online' : 'Physical') : $slot['mode'];
+        $meetingLink = array_key_exists('meeting_link', $data) ? trim((string) $data['meeting_link']) : (string) ($slot['meeting_link'] ?? '');
+        $location = array_key_exists('location', $data) ? trim((string) $data['location']) : (string) ($slot['location'] ?? '');
+        $resources = array_key_exists('resources', $data) ? trim((string) $data['resources']) : (string) ($slot['resources'] ?? '');
+        $outcomes = array_key_exists('outcomes', $data) ? trim((string) $data['outcomes']) : (string) ($slot['outcomes'] ?? '');
+
+        if ($capacity < 1) {
+            return $this->json($response, ['error' => 'capacity must be at least 1.'], 422);
+        }
+
+        // Can't shrink capacity below the seats already booked.
+        $stmt = $db->prepare("SELECT COUNT(*) FROM Booking WHERE availability_id = :id AND status <> 'Cancelled'");
+        $stmt->execute(['id' => $availabilityId]);
+        $seatsTaken = (int) $stmt->fetchColumn();
+        if ($capacity < $seatsTaken) {
+            return $this->json($response, ['error' => "Capacity can't be lower than the $seatsTaken seat(s) already booked."], 422);
+        }
+
+        $stmt = $db->prepare(
+            'UPDATE TutorAvailability
+             SET capacity = :capacity, mode = :mode, meeting_link = :meeting_link,
+                 location = :location, resources = :resources, outcomes = :outcomes
+             WHERE availability_id = :id'
+        );
+        $stmt->execute([
+            'capacity' => $capacity,
+            'mode' => $mode,
+            'meeting_link' => $meetingLink === '' ? null : $meetingLink,
+            'location' => $location === '' ? null : $location,
+            'resources' => $resources === '' ? null : $resources,
+            'outcomes' => $outcomes === '' ? null : $outcomes,
+            'id' => $availabilityId,
+        ]);
+
+        return $this->json($response, ['data' => ['availability_id' => $availabilityId, 'capacity' => $capacity, 'mode' => $mode]], 200);
+    }
+
+    /**
+     * POST /api/tutor/availability/{id}/cancel (requires JWT, owner only)
+     * Body: { priority?: bool }
+     * Cancels the slot and its bookings, messages every enrolled learner,
+     * and — if priority is set — records them as "Waiting" so the tutor's
+     * next slot is offered to them first (12h) before opening to all.
+     */
+    public function cancelAvailability(Request $request, Response $response, array $args): Response
+    {
+        $userId = (int) $request->getAttribute('user_id');
+        $availabilityId = (int) $args['id'];
+        $data = (array) $request->getParsedBody();
+        $givePriority = !empty($data['priority']);
+
+        $db = Database::getConnection();
+        $stmt = $db->prepare('SELECT * FROM TutorAvailability WHERE availability_id = :id');
+        $stmt->execute(['id' => $availabilityId]);
+        $slot = $stmt->fetch();
+
+        if (!$slot) {
+            return $this->json($response, ['error' => 'Slot not found.'], 404);
+        }
+        if ((int) $slot['tutor_id'] !== $userId) {
+            return $this->json($response, ['error' => 'You can only cancel your own availability.'], 403);
+        }
+        if ($slot['status'] === 'Cancelled') {
+            return $this->json($response, ['error' => 'This slot is already cancelled.'], 422);
+        }
+
+        $when = $slot['available_date'] . ' ' . substr($slot['start_time'], 0, 5);
+
+        // Learners with an active booking on this slot.
+        $stmt = $db->prepare("SELECT learner_id FROM Booking WHERE availability_id = :id AND status <> 'Cancelled'");
+        $stmt->execute(['id' => $availabilityId]);
+        $learnerIds = array_map('intval', array_column($stmt->fetchAll(), 'learner_id'));
+
+        $db->beginTransaction();
+        try {
+            $db->prepare("UPDATE TutorAvailability SET status = 'Cancelled' WHERE availability_id = :id")
+               ->execute(['id' => $availabilityId]);
+            $db->prepare("UPDATE Booking SET status = 'Cancelled' WHERE availability_id = :id AND status <> 'Cancelled'")
+               ->execute(['id' => $availabilityId]);
+
+            $msg = $db->prepare('INSERT INTO Message (sender_id, receiver_id, body) VALUES (:tutor, :learner, :body)');
+            $prio = $db->prepare(
+                "INSERT INTO SlotPriority (tutor_id, learner_id, origin_slot_id, status) VALUES (:tutor, :learner, :origin, 'Waiting')"
+            );
+
+            foreach ($learnerIds as $lid) {
+                $body = "Your session on $when was cancelled by the tutor."
+                    . ($givePriority
+                        ? ' You have priority on their next slot — watch for an offer (12 hours to grab your seat).'
+                        : '');
+                $msg->execute(['tutor' => $userId, 'learner' => $lid, 'body' => $body]);
+                if ($givePriority) {
+                    $prio->execute(['tutor' => $userId, 'learner' => $lid, 'origin' => $availabilityId]);
+                }
+            }
+
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            error_log('Slot cancel failed: ' . $e->getMessage());
+            return $this->json($response, ['error' => 'Could not cancel the slot.'], 500);
+        }
+
+        return $this->json($response, [
+            'data' => ['cancelled' => true, 'students_notified' => count($learnerIds), 'priority' => $givePriority],
+        ], 200);
+    }
+
+    /**
      * DELETE /api/tutor/availability/{id} (requires JWT, owner only)
      * Removes a slot. Blocked if learners have already booked it, so we
      * don't silently drop active sessions.

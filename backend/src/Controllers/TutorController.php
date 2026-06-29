@@ -37,8 +37,11 @@ class TutorController
         $bindings = [];
 
         if (!empty($params['search'])) {
-            $conditions[] = '(u.name LIKE :search OR s.name LIKE :search)';
-            $bindings['search'] = '%' . $params['search'] . '%';
+            // Distinct placeholders: this PDO connection disables emulated
+            // prepares, so a named placeholder can't be reused in one query.
+            $conditions[] = '(u.name LIKE :search_name OR s.name LIKE :search_skill)';
+            $bindings['search_name'] = '%' . $params['search'] . '%';
+            $bindings['search_skill'] = '%' . $params['search'] . '%';
         }
         if (!empty($params['skill_id'])) {
             $conditions[] = 'us.skill_id = :skill_id';

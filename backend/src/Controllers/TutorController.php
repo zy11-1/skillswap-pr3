@@ -283,6 +283,40 @@ class TutorController
     }
 
     /**
+     * DELETE /api/tutor/availability/{id} (requires JWT, owner only)
+     * Removes a slot. Blocked if learners have already booked it, so we
+     * don't silently drop active sessions.
+     */
+    public function deleteAvailability(Request $request, Response $response, array $args): Response
+    {
+        $userId = (int) $request->getAttribute('user_id');
+        $availabilityId = (int) $args['id'];
+
+        $db = Database::getConnection();
+        $stmt = $db->prepare('SELECT tutor_id FROM TutorAvailability WHERE availability_id = :id');
+        $stmt->execute(['id' => $availabilityId]);
+        $slot = $stmt->fetch();
+
+        if (!$slot) {
+            return $this->json($response, ['error' => 'Slot not found.'], 404);
+        }
+        if ((int) $slot['tutor_id'] !== $userId) {
+            return $this->json($response, ['error' => 'You can only remove your own availability.'], 403);
+        }
+
+        $stmt = $db->prepare("SELECT COUNT(*) FROM Booking WHERE availability_id = :id AND status <> 'Cancelled'");
+        $stmt->execute(['id' => $availabilityId]);
+        if ((int) $stmt->fetchColumn() > 0) {
+            return $this->json($response, ['error' => 'This slot has active bookings and cannot be removed.'], 409);
+        }
+
+        $stmt = $db->prepare('DELETE FROM TutorAvailability WHERE availability_id = :id');
+        $stmt->execute(['id' => $availabilityId]);
+
+        return $this->json($response, ['data' => ['deleted' => true]], 200);
+    }
+
+    /**
      * GET /api/tutor/skills (requires JWT)
      * The logged-in user's own skill offerings, for the Tutor dashboard.
      */

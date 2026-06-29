@@ -13,7 +13,9 @@ const availability = ref([])
 const newSlot = ref({
   available_date: new Date().toISOString().split('T')[0],
   start_time: '09:00',
-  end_time: '17:00'
+  end_time: '17:00',
+  slot_type: 'Solo',   // 'Solo' (capacity 1) or 'Group' (capacity > 1)
+  group_capacity: 5
 })
 const saving = ref(false)
 const loadingAvailability = ref(false)
@@ -149,30 +151,52 @@ async function loadAvailability() {
   }
 }
 
+const slotError = ref('')
+
 async function addSlot() {
   if (!auth.user) {
     console.error('No user logged in')
     return
   }
+  slotError.value = ''
+  // Solo = 1 seat; Group = the chosen capacity (min 2).
+  const capacity = newSlot.value.slot_type === 'Group' ? Number(newSlot.value.group_capacity) : 1
+  if (newSlot.value.slot_type === 'Group' && capacity < 2) {
+    slotError.value = 'A group slot needs a capacity of at least 2.'
+    return
+  }
   saving.value = true
   try {
-    const res = await api.addAvailability(newSlot.value)
-    availability.value.push({ ...newSlot.value, availability_id: res.data.availability_id })
-    // Reset the form
-    newSlot.value = { 
-      available_date: new Date().toISOString().split('T')[0], 
-      start_time: '09:00', 
-      end_time: '17:00' 
+    await api.addAvailability({
+      available_date: newSlot.value.available_date,
+      start_time: newSlot.value.start_time,
+      end_time: newSlot.value.end_time,
+      capacity
+    })
+    // Reload so the new slot shows its capacity/seats from the server.
+    await loadAvailability()
+    newSlot.value = {
+      available_date: new Date().toISOString().split('T')[0],
+      start_time: '09:00',
+      end_time: '17:00',
+      slot_type: 'Solo',
+      group_capacity: 5
     }
   } catch (err) {
-    console.error('Failed to add slot:', err)
+    slotError.value = err.message || 'Failed to add slot.'
   } finally {
     saving.value = false
   }
 }
 
-function removeSlot(id) {
-  availability.value = availability.value.filter(s => s.availability_id !== id)
+async function removeSlot(id) {
+  if (!confirm('Remove this availability slot?')) return
+  try {
+    await api.deleteAvailability(id)
+    await loadAvailability()
+  } catch (err) {
+    alert(err.message || 'Could not remove slot.')
+  }
 }
 
 onMounted(() => {
@@ -480,6 +504,8 @@ function formatDate(dateStr) {
           <span class="ms-2 text-muted small">Loading...</span>
         </div>
 
+        <div v-if="slotError" class="alert alert-danger py-2 small">{{ slotError }}</div>
+
         <!-- Existing slots -->
         <div v-if="availability.length" class="mb-3">
           <div
@@ -490,6 +516,14 @@ function formatDate(dateStr) {
             <span>
               <strong>{{ slot.available_date }}</strong>
               {{ slot.start_time.slice(0,5) }} – {{ slot.end_time.slice(0,5) }}
+              <span
+                class="badge ms-2"
+                :class="slot.type === 'Group' ? 'bg-info text-dark' : 'bg-secondary'"
+              >
+                <i :class="slot.type === 'Group' ? 'bi bi-people-fill' : 'bi bi-person-fill'" class="me-1"></i>
+                {{ slot.type }}
+                <template v-if="slot.type === 'Group'"> · {{ slot.seats_taken }}/{{ slot.capacity }} booked</template>
+              </span>
             </span>
             <button
               class="btn btn-sm btn-outline-danger"
@@ -503,19 +537,30 @@ function formatDate(dateStr) {
 
         <!-- Add new slot -->
         <div class="row g-2 align-items-end">
-          <div class="col-4">
+          <div class="col-md-3">
             <label class="form-label small">Date</label>
             <input v-model="newSlot.available_date" type="date" class="form-control form-control-sm" />
           </div>
-          <div class="col-3">
+          <div class="col-md-2">
             <label class="form-label small">Start</label>
             <input v-model="newSlot.start_time" type="time" class="form-control form-control-sm" />
           </div>
-          <div class="col-3">
+          <div class="col-md-2">
             <label class="form-label small">End</label>
             <input v-model="newSlot.end_time" type="time" class="form-control form-control-sm" />
           </div>
-          <div class="col-2">
+          <div class="col-md-2">
+            <label class="form-label small">Type</label>
+            <select v-model="newSlot.slot_type" class="form-select form-select-sm">
+              <option value="Solo">Solo (1 seat)</option>
+              <option value="Group">Group</option>
+            </select>
+          </div>
+          <div v-if="newSlot.slot_type === 'Group'" class="col-md-2">
+            <label class="form-label small">Seats</label>
+            <input v-model.number="newSlot.group_capacity" type="number" min="2" class="form-control form-control-sm" />
+          </div>
+          <div class="col-md-1">
             <button
               class="btn btn-primary btn-sm w-100"
               :disabled="saving"

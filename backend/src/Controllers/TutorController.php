@@ -232,6 +232,9 @@ class TutorController
         $date = (string) ($data['available_date'] ?? '');
         $start = (string) ($data['start_time'] ?? '');
         $end = (string) ($data['end_time'] ?? '');
+        // Capacity: 1 = Solo session, >1 = Group session. Defaults to 1
+        // so older clients that don't send it still create a Solo slot.
+        $capacity = (int) ($data['capacity'] ?? 1);
 
         if ($date === '' || $start === '' || $end === '') {
             return $this->json($response, ['error' => 'available_date, start_time, end_time are required.'], 422);
@@ -241,20 +244,29 @@ class TutorController
             return $this->json($response, ['error' => 'Cannot set availability in the past.'], 422);
         }
 
+        if ($end <= $start) {
+            return $this->json($response, ['error' => 'end_time must be after start_time.'], 422);
+        }
+
+        if ($capacity < 1) {
+            return $this->json($response, ['error' => 'capacity must be at least 1.'], 422);
+        }
+
         $db = Database::getConnection();
         $stmt = $db->prepare(
-            'INSERT INTO TutorAvailability (tutor_id, available_date, start_time, end_time)
-             VALUES (:tutor_id, :date, :start, :end)'
+            'INSERT INTO TutorAvailability (tutor_id, available_date, start_time, end_time, capacity)
+             VALUES (:tutor_id, :date, :start, :end, :capacity)'
         );
         $stmt->execute([
             'tutor_id' => $userId,
             'date' => $date,
             'start' => $start,
-            'end' => $end
+            'end' => $end,
+            'capacity' => $capacity
         ]);
 
         $id = (int) $db->lastInsertId();
-        return $this->json($response, ['data' => ['availability_id' => $id]], 201);
+        return $this->json($response, ['data' => ['availability_id' => $id, 'capacity' => $capacity]], 201);
     }
 
     /**

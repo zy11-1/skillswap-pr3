@@ -211,14 +211,18 @@ class TutorController
         $tutorId = (int) $args['id'];
         $db = Database::getConnection();
 
-        // Count active (non-Cancelled) bookings per slot so the UI can show
-        // how many seats are left and whether a slot is full.
+        // Per slot: active bookings (seats_taken) and seats currently held
+        // for priority students whose 12h window hasn't expired (reserved).
         $stmt = $db->prepare(
             "SELECT ta.availability_id, ta.tutor_id, ta.available_date, ta.start_time, ta.end_time, ta.capacity,
+                    ta.mode, ta.meeting_link, ta.location, ta.resources, ta.outcomes, ta.status,
                     (SELECT COUNT(*) FROM Booking b
-                     WHERE b.availability_id = ta.availability_id AND b.status <> 'Cancelled') AS seats_taken
+                     WHERE b.availability_id = ta.availability_id AND b.status <> 'Cancelled') AS seats_taken,
+                    (SELECT COUNT(*) FROM SlotPriority sp
+                     WHERE sp.new_slot_id = ta.availability_id AND sp.status = 'Offered'
+                       AND sp.expires_at > NOW()) AS reserved
              FROM TutorAvailability ta
-             WHERE ta.tutor_id = :tutor_id AND ta.available_date >= CURDATE()
+             WHERE ta.tutor_id = :tutor_id AND ta.available_date >= CURDATE() AND ta.status = 'Active'
              ORDER BY ta.available_date, ta.start_time"
         );
         $stmt->execute(['tutor_id' => $tutorId]);
@@ -227,7 +231,10 @@ class TutorController
         foreach ($slots as &$slot) {
             $slot['capacity'] = (int) $slot['capacity'];
             $slot['seats_taken'] = (int) $slot['seats_taken'];
-            $slot['seats_left'] = max(0, $slot['capacity'] - $slot['seats_taken']);
+            $slot['reserved'] = (int) $slot['reserved'];
+            // Seats a non-priority student can grab = capacity minus those
+            // already booked minus seats still reserved for priority holders.
+            $slot['seats_left'] = max(0, $slot['capacity'] - $slot['seats_taken'] - $slot['reserved']);
             $slot['type'] = $slot['capacity'] > 1 ? 'Group' : 'Solo';
             $slot['is_full'] = $slot['seats_left'] <= 0;
         }
@@ -251,6 +258,11 @@ class TutorController
         // Capacity: 1 = Solo session, >1 = Group session. Defaults to 1
         // so older clients that don't send it still create a Solo slot.
         $capacity = (int) ($data['capacity'] ?? 1);
+        $mode = ($data['mode'] ?? 'Physical') === 'Online' ? 'Online' : 'Physical';
+        $meetingLink = trim((string) ($data['meeting_link'] ?? ''));
+        $location = trim((string) ($data['location'] ?? ''));
+        $resources = trim((string) ($data['resources'] ?? ''));
+        $outcomes = trim((string) ($data['outcomes'] ?? ''));
 
         if ($date === '' || $start === '' || $end === '') {
             return $this->json($response, ['error' => 'available_date, start_time, end_time are required.'], 422);
@@ -270,19 +282,61 @@ class TutorController
 
         $db = Database::getConnection();
         $stmt = $db->prepare(
-            'INSERT INTO TutorAvailability (tutor_id, available_date, start_time, end_time, capacity)
-             VALUES (:tutor_id, :date, :start, :end, :capacity)'
+            'INSERT INTO TutorAvailability (tutor_id, available_date, start_time, end_time, capacity, mode, meeting_link, location, resources, outcomes)
+             VALUES (:tutor_id, :date, :start, :end, :capacity, :mode, :meeting_link, :location, :resources, :outcomes)'
         );
         $stmt->execute([
             'tutor_id' => $userId,
             'date' => $date,
             'start' => $start,
             'end' => $end,
-            'capacity' => $capacity
+            'capacity' => $capacity,
+            'mode' => $mode,
+            'meeting_link' => $meetingLink === '' ? null : $meetingLink,
+            'location' => $location === '' ? null : $location,
+            'resources' => $resources === '' ? null : $resources,
+            'outcomes' => $outcomes === '' ? null : $outcomes,
         ]);
 
         $id = (int) $db->lastInsertId();
+
+        // If this tutor has students waiting from a cancelled slot, offer
+        // them this new slot first (12h priority window).
+        $this->offerPriorityForNewSlot($db, $userId, $id);
+
         return $this->json($response, ['data' => ['availability_id' => $id, 'capacity' => $capacity]], 201);
+    }
+
+    /**
+     * Promote this tutor's "Waiting" priority holders to an offer on the
+     * newly created slot, give them a 12-hour window, and message them.
+     */
+    private function offerPriorityForNewSlot(\PDO $db, int $tutorId, int $newSlotId): void
+    {
+        $stmt = $db->prepare("SELECT priority_id, learner_id FROM SlotPriority WHERE tutor_id = :tid AND status = 'Waiting'");
+        $stmt->execute(['tid' => $tutorId]);
+        $waiting = $stmt->fetchAll();
+        if (!$waiting) {
+            return;
+        }
+
+        $slotStmt = $db->prepare('SELECT available_date, start_time FROM TutorAvailability WHERE availability_id = :id');
+        $slotStmt->execute(['id' => $newSlotId]);
+        $slot = $slotStmt->fetch();
+        $when = $slot ? ($slot['available_date'] . ' ' . substr($slot['start_time'], 0, 5)) : 'a new slot';
+
+        $update = $db->prepare(
+            "UPDATE SlotPriority SET status = 'Offered', new_slot_id = :sid,
+                    expires_at = DATE_ADD(NOW(), INTERVAL 12 HOUR)
+             WHERE priority_id = :pid"
+        );
+        $msg = $db->prepare('INSERT INTO Message (sender_id, receiver_id, body) VALUES (:tutor, :learner, :body)');
+
+        foreach ($waiting as $w) {
+            $update->execute(['sid' => $newSlotId, 'pid' => $w['priority_id']]);
+            $body = "Priority offer: your tutor opened a new session on $when. You have 12 hours to grab your seat before it opens to everyone else.";
+            $msg->execute(['tutor' => $tutorId, 'learner' => $w['learner_id'], 'body' => $body]);
+        }
     }
 
     /**

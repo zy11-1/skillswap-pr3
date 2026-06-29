@@ -187,13 +187,44 @@ class BookingController
                 return $this->json($response, ['error' => 'You have already booked this slot.'], 409);
             }
 
-            // Capacity check (active bookings only).
-            $stmt = $db->prepare("SELECT COUNT(*) FROM Booking WHERE availability_id = :aid AND status <> 'Cancelled'");
-            $stmt->execute(['aid' => $availabilityId]);
-            $seatsTaken = (int) $stmt->fetchColumn();
-            if ($seatsTaken >= (int) $slot['capacity']) {
-                $db->rollBack();
-                return $this->json($response, ['error' => 'This slot is already full.'], 409);
+            // Does THIS learner hold an active (unexpired) priority offer
+            // for this slot? If so they can always claim their reserved seat.
+            $stmt = $db->prepare(
+                "SELECT priority_id FROM SlotPriority
+                 WHERE new_slot_id = :aid AND learner_id = :lid AND status = 'Offered' AND expires_at > NOW()"
+            );
+            $stmt->execute(['aid' => $availabilityId, 'lid' => $learnerId]);
+            $myPriorityId = $stmt->fetchColumn();
+
+            $seatsTaken = (int) $db->query("SELECT COUNT(*) FROM Booking WHERE availability_id = " . (int) $availabilityId . " AND status <> 'Cancelled'")->fetchColumn();
+
+            // Seats still held for OTHER priority holders (unexpired offers).
+            $stmt = $db->prepare(
+                "SELECT COUNT(*) FROM SlotPriority
+                 WHERE new_slot_id = :aid AND status = 'Offered' AND expires_at > NOW() AND learner_id <> :lid"
+            );
+            $stmt->execute(['aid' => $availabilityId, 'lid' => $learnerId]);
+            $reservedForOthers = (int) $stmt->fetchColumn();
+
+            $capacity = (int) $slot['capacity'];
+            if ($myPriorityId) {
+                // Priority holder: only blocked if genuinely no seats at all.
+                if ($seatsTaken >= $capacity) {
+                    $db->rollBack();
+                    return $this->json($response, ['error' => 'This slot is already full.'], 409);
+                }
+            } else {
+                // Regular student: must leave the reserved seats untouched.
+                if ($seatsTaken + $reservedForOthers >= $capacity) {
+                    $db->rollBack();
+                    return $this->json($response, ['error' => 'This slot is full or its seats are reserved for priority students.'], 409);
+                }
+            }
+
+            // Consume this learner's priority offer, if any.
+            if ($myPriorityId) {
+                $db->prepare("UPDATE SlotPriority SET status = 'Used' WHERE priority_id = :pid")
+                   ->execute(['pid' => $myPriorityId]);
             }
 
             // Under capacity -> auto-accept.

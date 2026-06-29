@@ -11,7 +11,6 @@ const form = ref({
   email: '',
   password: '',
   confirmPassword: '',
-  role: 'learner',
   faculty: '',
   photo_url: 'https://i.pravatar.cc/150?img=1'
 })
@@ -59,7 +58,6 @@ async function handleSubmit() {
       name: form.value.name,
       email: form.value.email,
       password: form.value.password,
-      role: form.value.role,
       faculty: form.value.faculty,
       photo_url: form.value.photo_url
     })
@@ -79,7 +77,7 @@ async function handleSubmit() {
         <div class="text-center mb-4">
           <i class="bi bi-person-plus-fill text-primary-ss" style="font-size: 2.5rem"></i>
           <h3 class="fw-bold mt-2">Create your account</h3>
-          <p class="text-muted">Join SkillSwap as a learner or tutor</p>
+          <p class="text-muted">One student account — learn and tutor from the same login</p>
         </div>
 
         <div v-if="error" class="alert alert-danger py-2">{{ error }}</div>
@@ -109,28 +107,10 @@ async function handleSubmit() {
             </select>
           </div>
 
-          <div class="mb-3">
-            <label class="form-label d-block">I want to join as</label>
-            <div class="btn-group w-100" role="group">
-              <input
-                type="radio"
-                class="btn-check"
-                id="role-learner"
-                value="learner"
-                v-model="form.role"
-              />
-              <label class="btn btn-outline-primary" for="role-learner">Learner</label>
-
-              <input
-                type="radio"
-                class="btn-check"
-                id="role-tutor"
-                value="tutor"
-                v-model="form.role"
-              />
-              <label class="btn btn-outline-primary" for="role-tutor">Tutor</label>
-            </div>
-            <div class="form-text">You can offer skills later even if you join as a learner.</div>
+          <div class="alert alert-light border small mb-3">
+            <i class="bi bi-info-circle me-1"></i>
+            Your account can both <strong>learn</strong> and <strong>tutor</strong>. Switch anytime
+            with the Learner/Tutor toggle, and add skills from your Tutor dashboard to appear in the marketplace.
           </div>
 
           <div class="mb-3">

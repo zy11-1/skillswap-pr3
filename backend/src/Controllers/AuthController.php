@@ -30,7 +30,11 @@ class AuthController
         $name = trim((string) ($data['name'] ?? ''));
         $email = trim((string) ($data['email'] ?? ''));
         $password = (string) ($data['password'] ?? '');
-        $role = (string) ($data['role'] ?? 'learner');
+        // Every public account is a unified "student": they can both learn
+        // and tutor from the same login (switched via the in-app mode
+        // toggle). We never let registration pick tutor/admin — tutor
+        // ability is just having skill offerings; admin is created manually.
+        $role = 'learner';
         $faculty = trim((string) ($data['faculty'] ?? ''));
         $photoUrl = trim((string) ($data['photo_url'] ?? ''));
 
@@ -42,10 +46,6 @@ class AuthController
         }
         if (strlen($password) < 6) {
             $errors[] = 'Password must be at least 6 characters.';
-        }
-        if (!in_array($role, ['learner', 'tutor'], true)) {
-            // Admin accounts are never created through public registration
-            $errors[] = 'Invalid role.';
         }
         if ($faculty === '') {
             $errors[] = 'Faculty is required.';

@@ -10,13 +10,27 @@ const updatingId = ref(null)
 
 // ---- Availability ----
 const availability = ref([])
-const newSlot = ref({
-  available_date: new Date().toISOString().split('T')[0],
-  start_time: '09:00',
-  end_time: '17:00',
-  slot_type: 'Solo',   // 'Solo' (capacity 1) or 'Group' (capacity > 1)
-  group_capacity: 5
-})
+function blankSlot() {
+  return {
+    available_date: new Date().toISOString().split('T')[0],
+    start_time: '09:00',
+    end_time: '17:00',
+    slot_type: 'Solo',   // 'Solo' (capacity 1) or 'Group' (capacity > 1)
+    group_capacity: 5,
+    mode: 'Physical',    // 'Physical' or 'Online'
+    meeting_link: '',
+    location: '',
+    resources: '',
+    outcomes: ''
+  }
+}
+const newSlot = ref(blankSlot())
+
+// Inline edit / cancel state
+const editingId = ref(null)
+const editForm = ref({})
+const editError = ref('')
+const savingEdit = ref(false)
 const saving = ref(false)
 const loadingAvailability = ref(false)
 
@@ -171,21 +185,81 @@ async function addSlot() {
       available_date: newSlot.value.available_date,
       start_time: newSlot.value.start_time,
       end_time: newSlot.value.end_time,
-      capacity
+      capacity,
+      mode: newSlot.value.mode,
+      meeting_link: newSlot.value.meeting_link,
+      location: newSlot.value.location,
+      resources: newSlot.value.resources,
+      outcomes: newSlot.value.outcomes
     })
     // Reload so the new slot shows its capacity/seats from the server.
     await loadAvailability()
-    newSlot.value = {
-      available_date: new Date().toISOString().split('T')[0],
-      start_time: '09:00',
-      end_time: '17:00',
-      slot_type: 'Solo',
-      group_capacity: 5
-    }
+    newSlot.value = blankSlot()
   } catch (err) {
     slotError.value = err.message || 'Failed to add slot.'
   } finally {
     saving.value = false
+  }
+}
+
+// Open the inline editor for a slot (time is not editable).
+function startEdit(slot) {
+  editError.value = ''
+  editingId.value = slot.availability_id
+  editForm.value = {
+    capacity: slot.capacity,
+    mode: slot.mode || 'Physical',
+    meeting_link: slot.meeting_link || '',
+    location: slot.location || '',
+    resources: slot.resources || '',
+    outcomes: slot.outcomes || ''
+  }
+}
+
+function cancelEdit() {
+  editingId.value = null
+}
+
+async function saveEdit(slot) {
+  editError.value = ''
+  if (Number(editForm.value.capacity) < (slot.seats_taken || 0)) {
+    editError.value = `Capacity can't be below the ${slot.seats_taken} seat(s) already booked.`
+    return
+  }
+  savingEdit.value = true
+  try {
+    await api.updateAvailability(slot.availability_id, {
+      capacity: Number(editForm.value.capacity),
+      mode: editForm.value.mode,
+      meeting_link: editForm.value.meeting_link,
+      location: editForm.value.location,
+      resources: editForm.value.resources,
+      outcomes: editForm.value.outcomes
+    })
+    editingId.value = null
+    await loadAvailability()
+  } catch (err) {
+    editError.value = err.message || 'Could not save changes.'
+  } finally {
+    savingEdit.value = false
+  }
+}
+
+async function cancelSlot(slot) {
+  const hasStudents = (slot.seats_taken || 0) > 0
+  if (!confirm(`Cancel this session?${hasStudents ? ' Enrolled students will be notified.' : ''}`)) return
+  let priority = false
+  if (hasStudents) {
+    priority = confirm('Give these students PRIORITY on your next slot? (They get 12h first dibs before it opens to others.)\n\nOK = give priority, Cancel = no priority')
+  }
+  try {
+    const res = await api.cancelAvailability(slot.availability_id, priority)
+    await loadAvailability()
+    if (res.data?.students_notified) {
+      alert(`Slot cancelled. ${res.data.students_notified} student(s) notified${priority ? ' and given priority' : ''}.`)
+    }
+  } catch (err) {
+    alert(err.message || 'Could not cancel the slot.')
   }
 }
 
@@ -518,31 +592,78 @@ function formatDate(dateStr) {
 
         <div v-if="slotError" class="alert alert-danger py-2 small">{{ slotError }}</div>
 
+        <div v-if="editError" class="alert alert-danger py-2 small">{{ editError }}</div>
+
         <!-- Existing slots -->
         <div v-if="availability.length" class="mb-3">
-          <div
-            v-for="slot in availability"
-            :key="slot.availability_id"
-            class="d-flex align-items-center justify-content-between bg-light p-2 rounded mb-1"
-          >
-            <span>
-              <strong>{{ slot.available_date }}</strong>
-              {{ slot.start_time.slice(0,5) }} – {{ slot.end_time.slice(0,5) }}
-              <span
-                class="badge ms-2"
-                :class="slot.type === 'Group' ? 'bg-info text-dark' : 'bg-secondary'"
-              >
-                <i :class="slot.type === 'Group' ? 'bi bi-people-fill' : 'bi bi-person-fill'" class="me-1"></i>
-                {{ slot.type }}
-                <template v-if="slot.type === 'Group'"> · {{ slot.seats_taken }}/{{ slot.capacity }} booked</template>
+          <div v-for="slot in availability" :key="slot.availability_id" class="bg-light p-2 rounded mb-2">
+            <div class="d-flex align-items-center justify-content-between">
+              <span>
+                <strong>{{ slot.available_date }}</strong>
+                {{ slot.start_time.slice(0,5) }} – {{ slot.end_time.slice(0,5) }}
+                <span class="badge ms-2" :class="slot.type === 'Group' ? 'bg-info text-dark' : 'bg-secondary'">
+                  <i :class="slot.type === 'Group' ? 'bi bi-people-fill' : 'bi bi-person-fill'" class="me-1"></i>
+                  {{ slot.type }}
+                  <template v-if="slot.type === 'Group'"> · {{ slot.seats_taken }}/{{ slot.capacity }} booked</template>
+                </span>
+                <span class="badge ms-1" :class="slot.mode === 'Online' ? 'bg-primary' : 'bg-success'">
+                  <i :class="slot.mode === 'Online' ? 'bi bi-camera-video' : 'bi bi-geo-alt'" class="me-1"></i>
+                  {{ slot.mode }}
+                </span>
               </span>
-            </span>
-            <button
-              class="btn btn-sm btn-outline-danger"
-              @click="removeSlot(slot.availability_id)"
-            >
-              <i class="bi bi-x"></i>
-            </button>
+              <span class="d-flex gap-1">
+                <button class="btn btn-sm btn-outline-secondary" title="Edit" @click="startEdit(slot)">
+                  <i class="bi bi-pencil"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-warning" title="Cancel session" @click="cancelSlot(slot)">
+                  <i class="bi bi-slash-circle"></i>
+                </button>
+                <button class="btn btn-sm btn-outline-danger" title="Delete" @click="removeSlot(slot.availability_id)">
+                  <i class="bi bi-x"></i>
+                </button>
+              </span>
+            </div>
+
+            <!-- Inline editor (time is fixed; everything else editable) -->
+            <div v-if="editingId === slot.availability_id" class="mt-2 border-top pt-2">
+              <div class="row g-2">
+                <div class="col-md-3">
+                  <label class="form-label small">Capacity</label>
+                  <input v-model.number="editForm.capacity" type="number" min="1" class="form-control form-control-sm" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label small">Mode</label>
+                  <select v-model="editForm.mode" class="form-select form-select-sm">
+                    <option value="Physical">Physical</option>
+                    <option value="Online">Online</option>
+                  </select>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small">{{ editForm.mode === 'Online' ? 'Meeting link' : 'Location' }}</label>
+                  <input
+                    v-if="editForm.mode === 'Online'"
+                    v-model="editForm.meeting_link"
+                    type="url" class="form-control form-control-sm" placeholder="https://meet.google.com/..."
+                  />
+                  <input v-else v-model="editForm.location" type="text" class="form-control form-control-sm" placeholder="e.g. Library room 3" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small">Resources / sources</label>
+                  <input v-model="editForm.resources" type="text" class="form-control form-control-sm" placeholder="Links or notes you'll share" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small">Learning outcomes</label>
+                  <input v-model="editForm.outcomes" type="text" class="form-control form-control-sm" placeholder="What the student will gain" />
+                </div>
+              </div>
+              <div class="mt-2 d-flex gap-2">
+                <button class="btn btn-sm btn-primary" :disabled="savingEdit" @click="saveEdit(slot)">
+                  {{ savingEdit ? 'Saving...' : 'Save changes' }}
+                </button>
+                <button class="btn btn-sm btn-light" @click="cancelEdit">Close</button>
+                <span class="text-muted small align-self-center">Time can't be changed — cancel &amp; repost to move it.</span>
+              </div>
+            </div>
           </div>
         </div>
         <p v-else class="text-muted small">No availability set yet.</p>
@@ -572,13 +693,33 @@ function formatDate(dateStr) {
             <label class="form-label small">Seats</label>
             <input v-model.number="newSlot.group_capacity" type="number" min="2" class="form-control form-control-sm" />
           </div>
-          <div class="col-md-1">
-            <button
-              class="btn btn-primary btn-sm w-100"
-              :disabled="saving"
-              @click="addSlot"
-            >
-              {{ saving ? '...' : 'Add' }}
+          <div class="col-md-3">
+            <label class="form-label small">Mode</label>
+            <select v-model="newSlot.mode" class="form-select form-select-sm">
+              <option value="Physical">Physical (in person)</option>
+              <option value="Online">Online</option>
+            </select>
+          </div>
+          <div class="col-md-5">
+            <label class="form-label small">{{ newSlot.mode === 'Online' ? 'Meeting link' : 'Location' }}</label>
+            <input
+              v-if="newSlot.mode === 'Online'"
+              v-model="newSlot.meeting_link"
+              type="url" class="form-control form-control-sm" placeholder="https://meet.google.com/..."
+            />
+            <input v-else v-model="newSlot.location" type="text" class="form-control form-control-sm" placeholder="e.g. Library room 3" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">Resources / sources (optional)</label>
+            <input v-model="newSlot.resources" type="text" class="form-control form-control-sm" placeholder="Links or notes you'll share" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">Learning outcomes (optional)</label>
+            <input v-model="newSlot.outcomes" type="text" class="form-control form-control-sm" placeholder="What the student will gain" />
+          </div>
+          <div class="col-md-2">
+            <button class="btn btn-primary btn-sm w-100" :disabled="saving" @click="addSlot">
+              {{ saving ? '...' : 'Add slot' }}
             </button>
           </div>
         </div>

@@ -58,6 +58,24 @@ async addAvailability(data) {
   return res.data
 },
 
+async updateAvailability(availabilityId, data) {
+  try {
+    const res = await http.patch(`/api/tutor/availability/${availabilityId}`, data)
+    return res.data
+  } catch (err) {
+    throw unwrapError(err)
+  }
+},
+
+async cancelAvailability(availabilityId, priority) {
+  try {
+    const res = await http.post(`/api/tutor/availability/${availabilityId}/cancel`, { priority })
+    return res.data
+  } catch (err) {
+    throw unwrapError(err)
+  }
+},
+
 async deleteAvailability(availabilityId) {
   try {
     const res = await http.delete(`/api/tutor/availability/${availabilityId}`)

@@ -605,21 +605,31 @@ function formatDate(dateStr) {
                   <i :class="slot.type === 'Group' ? 'bi bi-people-fill' : 'bi bi-person-fill'" class="me-1"></i>
                   {{ slot.type }}
                   <template v-if="slot.type === 'Group'"> · {{ slot.seats_taken }}/{{ slot.capacity }} booked</template>
+                  <template v-else-if="slot.seats_taken > 0"> · booked</template>
                 </span>
                 <span class="badge ms-1" :class="slot.mode === 'Online' ? 'bg-primary' : 'bg-success'">
                   <i :class="slot.mode === 'Online' ? 'bi bi-camera-video' : 'bi bi-geo-alt'" class="me-1"></i>
                   {{ slot.mode }}
                 </span>
               </span>
-              <span class="d-flex gap-1">
-                <button class="btn btn-sm btn-outline-secondary" title="Edit" @click="startEdit(slot)">
-                  <i class="bi bi-pencil"></i>
+              <span class="d-flex gap-2">
+                <button class="btn btn-sm btn-outline-secondary" @click="startEdit(slot)">
+                  <i class="bi bi-pencil me-1"></i>Edit
                 </button>
-                <button class="btn btn-sm btn-outline-warning" title="Cancel session" @click="cancelSlot(slot)">
-                  <i class="bi bi-slash-circle"></i>
+                <!-- Booked slot -> Cancel (notifies students). Empty slot -> Delete. -->
+                <button
+                  v-if="slot.seats_taken > 0"
+                  class="btn btn-sm btn-warning"
+                  @click="cancelSlot(slot)"
+                >
+                  <i class="bi bi-slash-circle me-1"></i>Cancel session
                 </button>
-                <button class="btn btn-sm btn-outline-danger" title="Delete" @click="removeSlot(slot.availability_id)">
-                  <i class="bi bi-x"></i>
+                <button
+                  v-else
+                  class="btn btn-sm btn-outline-danger"
+                  @click="removeSlot(slot.availability_id)"
+                >
+                  <i class="bi bi-trash me-1"></i>Delete
                 </button>
               </span>
             </div>

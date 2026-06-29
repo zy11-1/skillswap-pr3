@@ -208,14 +208,27 @@ class TutorController
         $tutorId = (int) $args['id'];
         $db = Database::getConnection();
 
+        // Count active (non-Cancelled) bookings per slot so the UI can show
+        // how many seats are left and whether a slot is full.
         $stmt = $db->prepare(
-            'SELECT availability_id, tutor_id, available_date, start_time, end_time
-             FROM TutorAvailability
-             WHERE tutor_id = :tutor_id AND available_date >= CURDATE()
-             ORDER BY available_date, start_time'
+            "SELECT ta.availability_id, ta.tutor_id, ta.available_date, ta.start_time, ta.end_time, ta.capacity,
+                    (SELECT COUNT(*) FROM Booking b
+                     WHERE b.availability_id = ta.availability_id AND b.status <> 'Cancelled') AS seats_taken
+             FROM TutorAvailability ta
+             WHERE ta.tutor_id = :tutor_id AND ta.available_date >= CURDATE()
+             ORDER BY ta.available_date, ta.start_time"
         );
         $stmt->execute(['tutor_id' => $tutorId]);
         $slots = $stmt->fetchAll();
+
+        foreach ($slots as &$slot) {
+            $slot['capacity'] = (int) $slot['capacity'];
+            $slot['seats_taken'] = (int) $slot['seats_taken'];
+            $slot['seats_left'] = max(0, $slot['capacity'] - $slot['seats_taken']);
+            $slot['type'] = $slot['capacity'] > 1 ? 'Group' : 'Solo';
+            $slot['is_full'] = $slot['seats_left'] <= 0;
+        }
+        unset($slot);
 
         return $this->json($response, ['data' => $slots], 200);
     }

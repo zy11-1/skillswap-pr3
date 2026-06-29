@@ -68,8 +68,17 @@ class BookingController
      */
     public function create(Request $request, Response $response): Response
     {
-        $learnerId = (int) $request->getAttribute('user_id');
         $data = (array) $request->getParsedBody();
+
+        // New slot-based flow: when the learner picks a pre-set availability
+        // slot, we handle capacity + auto-accept separately. Falls through to
+        // the original free-time flow when no availability_id is given, so
+        // the teammate's existing booking path keeps working unchanged.
+        if (!empty($data['availability_id'])) {
+            return $this->createFromSlot($request, $response, $data);
+        }
+
+        $learnerId = (int) $request->getAttribute('user_id');
 
         $tutorId = (int) ($data['tutor_id'] ?? 0);
         $skillId = (int) ($data['skill_id'] ?? 0);
@@ -116,6 +125,102 @@ class BookingController
         $bookingId = (int) $db->lastInsertId();
         $booking = $this->fetchBookingById($db, $bookingId);
 
+        return $this->json($response, ['data' => $booking], 201);
+    }
+
+    /**
+     * Slot-based booking with capacity + auto-accept.
+     * Body: { availability_id, skill_id }
+     * The session time and length come from the chosen slot. The booking
+     * is auto-accepted when the slot still has free seats; otherwise the
+     * slot is full and we reject. Row-locks the slot so two learners
+     * can't take the last seat at the same time.
+     */
+    private function createFromSlot(Request $request, Response $response, array $data): Response
+    {
+        $learnerId = (int) $request->getAttribute('user_id');
+        $availabilityId = (int) $data['availability_id'];
+        $skillId = (int) ($data['skill_id'] ?? 0);
+
+        if (!$skillId) {
+            return $this->json($response, ['error' => 'skill_id is required.'], 422);
+        }
+
+        $db = Database::getConnection();
+        $db->beginTransaction();
+        try {
+            // Lock the slot row for the duration of the transaction.
+            $stmt = $db->prepare('SELECT * FROM TutorAvailability WHERE availability_id = :id FOR UPDATE');
+            $stmt->execute(['id' => $availabilityId]);
+            $slot = $stmt->fetch();
+
+            if (!$slot) {
+                $db->rollBack();
+                return $this->json($response, ['error' => 'That availability slot no longer exists.'], 404);
+            }
+
+            $tutorId = (int) $slot['tutor_id'];
+            $bookingDate = $slot['available_date'] . ' ' . $slot['start_time'];
+            if (strtotime($bookingDate) < time()) {
+                $db->rollBack();
+                return $this->json($response, ['error' => 'That slot is in the past.'], 422);
+            }
+
+            // Duration comes from the slot length (whole hours, min 1).
+            $duration = (int) max(1, round((strtotime($slot['end_time']) - strtotime($slot['start_time'])) / 3600));
+
+            // Price the session from the tutor's rate for this skill.
+            $stmt = $db->prepare('SELECT hourly_rate FROM UserSkill WHERE user_id = :tutor_id AND skill_id = :skill_id');
+            $stmt->execute(['tutor_id' => $tutorId, 'skill_id' => $skillId]);
+            $offering = $stmt->fetch();
+            if (!$offering) {
+                $db->rollBack();
+                return $this->json($response, ['error' => 'This tutor does not offer that skill.'], 404);
+            }
+            $totalAmount = (float) $offering['hourly_rate'] * $duration;
+
+            // Already booked this slot?
+            $stmt = $db->prepare("SELECT booking_id FROM Booking WHERE availability_id = :aid AND learner_id = :lid AND status <> 'Cancelled'");
+            $stmt->execute(['aid' => $availabilityId, 'lid' => $learnerId]);
+            if ($stmt->fetch()) {
+                $db->rollBack();
+                return $this->json($response, ['error' => 'You have already booked this slot.'], 409);
+            }
+
+            // Capacity check (active bookings only).
+            $stmt = $db->prepare("SELECT COUNT(*) FROM Booking WHERE availability_id = :aid AND status <> 'Cancelled'");
+            $stmt->execute(['aid' => $availabilityId]);
+            $seatsTaken = (int) $stmt->fetchColumn();
+            if ($seatsTaken >= (int) $slot['capacity']) {
+                $db->rollBack();
+                return $this->json($response, ['error' => 'This slot is already full.'], 409);
+            }
+
+            // Under capacity -> auto-accept.
+            $stmt = $db->prepare(
+                "INSERT INTO Booking (learner_id, tutor_id, skill_id, booking_date, duration, status, total_amount, availability_id)
+                 VALUES (:learner_id, :tutor_id, :skill_id, :booking_date, :duration, 'Accepted', :total_amount, :availability_id)"
+            );
+            $stmt->execute([
+                'learner_id' => $learnerId,
+                'tutor_id' => $tutorId,
+                'skill_id' => $skillId,
+                'booking_date' => date('Y-m-d H:i:s', strtotime($bookingDate)),
+                'duration' => $duration,
+                'total_amount' => $totalAmount,
+                'availability_id' => $availabilityId,
+            ]);
+            $bookingId = (int) $db->lastInsertId();
+
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            error_log('Slot booking failed: ' . $e->getMessage());
+            return $this->json($response, ['error' => 'Could not complete the booking.'], 500);
+        }
+
+        $booking = $this->fetchBookingById($db, $bookingId);
+        $booking['auto_accepted'] = true;
         return $this->json($response, ['data' => $booking], 201);
     }
 

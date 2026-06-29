@@ -247,6 +247,18 @@ function formatDate(dateStr) {
     <h3 class="fw-bold mb-1">Tutor Dashboard</h3>
     <p class="text-muted">Manage your incoming session requests</p>
 
+    <!-- Not-visible warning: a tutor only appears in the marketplace once
+         they list at least one skill (availability alone isn't enough). -->
+    <div v-if="!mySkills.length" class="alert alert-warning d-flex align-items-start">
+      <i class="bi bi-exclamation-triangle-fill me-2 mt-1"></i>
+      <div>
+        <strong>You're not visible to students yet.</strong>
+        Add at least one skill in <strong>My Skills &amp; Rates</strong> below (with an hourly rate)
+        to appear in the Marketplace and be searchable. Setting availability slots alone does
+        <em>not</em> make you findable — students book a <em>skill</em>.
+      </div>
+    </div>
+
     <!-- Bookings -->
     <div v-if="bookingStore.loading" class="text-center py-5">
       <div class="spinner-border text-primary-ss"></div>

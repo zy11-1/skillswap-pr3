@@ -134,7 +134,29 @@ CREATE TABLE IF NOT EXISTS TutorAvailability (
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
     capacity INT NOT NULL DEFAULT 1,
+    mode ENUM('Online', 'Physical') NOT NULL DEFAULT 'Physical',
+    meeting_link VARCHAR(255) NULL,   -- for Online sessions (Zoom/Meet/etc.)
+    location VARCHAR(255) NULL,        -- for Physical sessions (room/place)
+    resources TEXT NULL,               -- notes / source links the tutor shares
+    outcomes TEXT NULL,                -- what the learner will get out of the session
+    status ENUM('Active', 'Cancelled') NOT NULL DEFAULT 'Active',
     CONSTRAINT fk_availability_tutor FOREIGN KEY (tutor_id) REFERENCES User(user_id) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Priority re-grab: when a tutor cancels a booked slot, the affected
+-- learners can be given first dibs on the tutor's next slot for 12 hours
+-- before it opens to everyone else.
+CREATE TABLE IF NOT EXISTS SlotPriority (
+    priority_id    INT AUTO_INCREMENT PRIMARY KEY,
+    tutor_id       INT NOT NULL,
+    learner_id     INT NOT NULL,
+    origin_slot_id INT NULL,           -- the cancelled slot
+    new_slot_id    INT NULL,           -- the replacement slot they're offered
+    status         ENUM('Waiting', 'Offered', 'Used', 'Expired') NOT NULL DEFAULT 'Waiting',
+    expires_at     DATETIME NULL,      -- 12h deadline once offered
+    created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_priority_tutor FOREIGN KEY (tutor_id) REFERENCES User(user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_priority_learner FOREIGN KEY (learner_id) REFERENCES User(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 -- Booking -> TutorAvailability link (declared here because both tables

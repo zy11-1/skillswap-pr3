@@ -245,21 +245,33 @@ async function saveEdit(slot) {
   }
 }
 
-async function cancelSlot(slot) {
-  const hasStudents = (slot.seats_taken || 0) > 0
-  if (!confirm(`Cancel this session?${hasStudents ? ' Enrolled students will be notified.' : ''}`)) return
-  let priority = false
-  if (hasStudents) {
-    priority = confirm('Give these students PRIORITY on your next slot? (They get 12h first dibs before it opens to others.)\n\nOK = give priority, Cancel = no priority')
-  }
+// Cancel uses an in-app dialog (not native confirm) so the priority
+// checkbox is reliable — browsers suppress back-to-back confirm() popups.
+const cancelTarget = ref(null)
+const cancelPriority = ref(true)
+const cancelling = ref(false)
+
+function cancelSlot(slot) {
+  cancelTarget.value = slot
+  cancelPriority.value = (slot.seats_taken || 0) > 0
+}
+
+async function confirmCancel() {
+  const slot = cancelTarget.value
+  if (!slot) return
+  cancelling.value = true
   try {
-    const res = await api.cancelAvailability(slot.availability_id, priority)
+    const givePriority = cancelPriority.value && (slot.seats_taken || 0) > 0
+    const res = await api.cancelAvailability(slot.availability_id, givePriority)
+    cancelTarget.value = null
     await loadAvailability()
     if (res.data?.students_notified) {
-      alert(`Slot cancelled. ${res.data.students_notified} student(s) notified${priority ? ' and given priority' : ''}.`)
+      alert(`Session cancelled. ${res.data.students_notified} student(s) notified${givePriority ? ' and given priority for your next slot' : ''}.`)
     }
   } catch (err) {
     alert(err.message || 'Could not cancel the slot.')
+  } finally {
+    cancelling.value = false
   }
 }
 
@@ -736,4 +748,61 @@ function formatDate(dateStr) {
       </div>
     </div>
   </div>
+
+  <!-- Cancel-session dialog (in-app, so the priority checkbox is reliable) -->
+  <div v-if="cancelTarget" class="modal-backdrop-custom" @click.self="cancelTarget = null">
+    <div class="card cancel-modal shadow-lg">
+      <div class="card-body p-4">
+        <div class="d-flex justify-content-between align-items-start mb-2">
+          <h5 class="fw-bold mb-0">Cancel this session?</h5>
+          <button class="btn-close" @click="cancelTarget = null"></button>
+        </div>
+        <p class="text-muted small mb-3">
+          {{ cancelTarget.available_date }} ·
+          {{ cancelTarget.start_time.slice(0,5) }}–{{ cancelTarget.end_time.slice(0,5) }}
+        </p>
+
+        <div v-if="cancelTarget.seats_taken > 0" class="alert alert-warning py-2 small">
+          <i class="bi bi-people-fill me-1"></i>
+          <strong>{{ cancelTarget.seats_taken }}</strong> student(s) are booked and will be messaged that it's cancelled.
+        </div>
+        <p v-else class="text-muted small">No students are booked, so nobody will be notified.</p>
+
+        <div v-if="cancelTarget.seats_taken > 0" class="form-check mb-3">
+          <input id="give-priority" v-model="cancelPriority" type="checkbox" class="form-check-input" />
+          <label for="give-priority" class="form-check-label small">
+            Give these students <strong>priority</strong> on my next slot
+            <span class="d-block text-muted">They get a 12-hour head start to grab a seat before it opens to everyone else.</span>
+          </label>
+        </div>
+
+        <div class="d-flex gap-2">
+          <button class="btn btn-warning" :disabled="cancelling" @click="confirmCancel">
+            <span v-if="cancelling" class="spinner-border spinner-border-sm me-2"></span>
+            {{ cancelling ? 'Cancelling…' : 'Cancel session' }}
+          </button>
+          <button class="btn btn-light" @click="cancelTarget = null">Keep it</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
+
+<style scoped>
+.modal-backdrop-custom {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 20, 35, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+  padding: 1rem;
+}
+.cancel-modal {
+  border: none;
+  border-radius: 16px;
+  max-width: 420px;
+  width: 100%;
+}
+</style>

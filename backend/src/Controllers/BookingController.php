@@ -38,12 +38,15 @@ class BookingController
 
         $stmt = $db->prepare("
             SELECT b.*, learner.name AS learner_name, tutor.name AS tutor_name, s.name AS skill_name,
-                   r.review_id, r.rating AS review_rating, r.comment AS review_comment
+                   r.review_id, r.rating AS review_rating, r.comment AS review_comment,
+                   ta.mode AS slot_mode, ta.meeting_link, ta.location AS slot_location,
+                   ta.resources AS slot_resources, ta.outcomes AS slot_outcomes
             FROM Booking b
             JOIN User learner ON learner.user_id = b.learner_id
             JOIN User tutor ON tutor.user_id = b.tutor_id
             JOIN Skill s ON s.skill_id = b.skill_id
             LEFT JOIN Review r ON r.booking_id = b.booking_id
+            LEFT JOIN TutorAvailability ta ON ta.availability_id = b.availability_id
             WHERE $column = :user_id
             ORDER BY b.booking_date DESC
         ");

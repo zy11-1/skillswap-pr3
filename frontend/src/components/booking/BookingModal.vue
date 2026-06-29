@@ -127,6 +127,15 @@ onMounted(loadSlots)
                   {{ slot.type }}
                   <template v-if="slot.type === 'Group'"> · {{ slot.seats_left }} seat(s) left</template>
                   <template v-else-if="slot.is_full"> · taken</template>
+                  <span class="ms-1" :class="slot.mode === 'Online' ? 'text-primary' : 'text-success'">
+                    · <i :class="slot.mode === 'Online' ? 'bi bi-camera-video' : 'bi bi-geo-alt'"></i> {{ slot.mode }}
+                  </span>
+                </span>
+                <span v-if="slot.mode === 'Physical' && slot.location" class="small d-block text-muted">
+                  <i class="bi bi-geo-alt me-1"></i>{{ slot.location }}
+                </span>
+                <span v-if="slot.outcomes" class="small d-block text-muted">
+                  <i class="bi bi-bullseye me-1"></i>{{ slot.outcomes }}
                 </span>
               </span>
               <span class="fw-bold text-primary-ss">RM{{ slotPrice(slot) }}</span>

@@ -104,7 +104,26 @@ function formatDate(dateStr) {
         <tbody>
           <tr v-for="b in filteredBookings" :key="b.booking_id">
             <td>{{ auth.isTutorMode ? b.learner_name : b.tutor_name }}</td>
-            <td>{{ b.skill_name }}</td>
+            <td>
+              {{ b.skill_name }}
+              <template v-if="b.slot_mode && b.status !== 'Cancelled'">
+                <span class="badge ms-1" :class="b.slot_mode === 'Online' ? 'bg-primary' : 'bg-success'">
+                  <i :class="b.slot_mode === 'Online' ? 'bi bi-camera-video' : 'bi bi-geo-alt'" class="me-1"></i>{{ b.slot_mode }}
+                </span>
+                <a v-if="b.slot_mode === 'Online' && b.meeting_link" :href="b.meeting_link" target="_blank" rel="noopener" class="small d-block">
+                  <i class="bi bi-box-arrow-up-right me-1"></i>Join meeting
+                </a>
+                <span v-else-if="b.slot_mode === 'Physical' && b.slot_location" class="small d-block text-muted">
+                  <i class="bi bi-geo-alt me-1"></i>{{ b.slot_location }}
+                </span>
+                <span v-if="b.slot_outcomes" class="small d-block text-muted">
+                  <i class="bi bi-bullseye me-1"></i>{{ b.slot_outcomes }}
+                </span>
+                <span v-if="b.slot_resources" class="small d-block text-muted">
+                  <i class="bi bi-link-45deg me-1"></i>{{ b.slot_resources }}
+                </span>
+              </template>
+            </td>
             <td class="small">
               {{ formatDate(b.booking_date) }}
               <button

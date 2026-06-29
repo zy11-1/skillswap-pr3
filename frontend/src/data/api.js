@@ -58,6 +58,15 @@ async addAvailability(data) {
   return res.data
 },
 
+async deleteAvailability(availabilityId) {
+  try {
+    const res = await http.delete(`/api/tutor/availability/${availabilityId}`)
+    return res.data
+  } catch (err) {
+    throw unwrapError(err)
+  }
+},
+
   // ---------- TUTOR SKILL OFFERINGS ----------
   async getMySkills() {
     const res = await http.get('/api/tutor/skills')

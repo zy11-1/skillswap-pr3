@@ -30,7 +30,7 @@ class TutorController
             JOIN Skill s ON s.skill_id = us.skill_id
             LEFT JOIN Booking b ON b.tutor_id = us.user_id AND b.skill_id = us.skill_id
             LEFT JOIN Review r ON r.booking_id = b.booking_id
-            WHERE u.role = 'tutor'
+            WHERE u.role <> 'admin'
         ";
 
         $conditions = [];
@@ -100,7 +100,7 @@ class TutorController
              JOIN Skill s ON s.skill_id = us.skill_id
              LEFT JOIN Booking b ON b.tutor_id = us.user_id AND b.skill_id = us.skill_id
              LEFT JOIN Review r ON r.booking_id = b.booking_id
-             WHERE u.role = 'tutor' AND u.faculty = :faculty AND u.user_id != :me
+             WHERE u.role <> 'admin' AND u.faculty = :faculty AND u.user_id != :me
              GROUP BY us.userskill_id
              ORDER BY u.is_verified DESC, avg_rating DESC
              LIMIT 6"
@@ -126,7 +126,7 @@ class TutorController
 
         $stmt = $db->prepare(
             'SELECT user_id, name, faculty, photo_url, bio, is_verified
-             FROM User WHERE user_id = :id AND role = \'tutor\''
+             FROM User WHERE user_id = :id AND role <> \'admin\''
         );
         $stmt->execute(['id' => $tutorId]);
         $tutor = $stmt->fetch();

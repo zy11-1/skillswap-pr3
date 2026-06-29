@@ -39,11 +39,14 @@ class AdminController
      */
     public function pendingVerifications(Request $request, Response $response): Response
     {
+        // Anyone who offers skills (i.e. acts as a tutor) and isn't verified
+        // yet — independent of the stored role, since accounts are unified.
         $db = Database::getConnection();
         $stmt = $db->query(
-            "SELECT user_id, name, email, faculty, created_at
-             FROM User WHERE role = 'tutor' AND is_verified = 0
-             ORDER BY created_at ASC"
+            "SELECT DISTINCT u.user_id, u.name, u.email, u.faculty, u.created_at
+             FROM User u JOIN UserSkill us ON us.user_id = u.user_id
+             WHERE u.is_verified = 0 AND u.role <> 'admin'
+             ORDER BY u.created_at ASC"
         );
         $pending = $stmt->fetchAll();
 
@@ -124,8 +127,8 @@ class AdminController
         if (!$user) {
             return $this->json($response, ['error' => 'User not found.'], 404);
         }
-        if ($user['role'] !== 'tutor') {
-            return $this->json($response, ['error' => 'Only tutor accounts can be verified.'], 422);
+        if ($user['role'] === 'admin') {
+            return $this->json($response, ['error' => 'Admin accounts cannot be verified.'], 422);
         }
 
         $stmt = $db->prepare('UPDATE User SET is_verified = 1 WHERE user_id = :id');

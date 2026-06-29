@@ -51,6 +51,8 @@ return function (App $app) {
 $app->get('/api/tutors/{id}/availability', [TutorController::class, 'getAvailability']);
 $app->post('/api/tutor/availability', [TutorController::class, 'addAvailability'])
     ->add($jwtMiddleware);
+$app->delete('/api/tutor/availability/{id}', [TutorController::class, 'deleteAvailability'])
+    ->add($jwtMiddleware);
 
     // ---------------------------------------------------------------
     // Tutor skill offerings (manage the skills you teach)

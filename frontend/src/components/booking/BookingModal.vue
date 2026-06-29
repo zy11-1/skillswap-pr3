@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useBookingStore } from '@/stores/booking'
 import { api } from '@/data/api'
 
@@ -12,82 +12,62 @@ const emit = defineEmits(['close', 'booked'])
 
 const bookingStore = useBookingStore()
 
-// ====== Compute the date 7 days from now ======
-const today = new Date()
-const todayStr = today.toISOString().split('T')[0]
-const maxDate = new Date()
-maxDate.setDate(maxDate.getDate() + 7)
-const maxDateStr = maxDate.toISOString().split('T')[0]
-
-const date = ref('')
-const time = ref('')
-const duration = ref(1)
+const slots = ref([])
+const loadingSlots = ref(false)
+const selectedSlotId = ref(null)
 const submitting = ref(false)
 const error = ref('')
-const availableSlots = ref([])
-const loadingSlots = ref(false)
+const confirmed = ref(false)
 
-const totalAmount = computed(() => props.offering.hourly_rate * duration.value)
-
-async function loadAvailability() {
+async function loadSlots() {
   loadingSlots.value = true
   try {
     const res = await api.getTutorAvailability(props.tutor.user_id)
-    availableSlots.value = res.data || []
+    slots.value = res.data || []
   } catch (err) {
     console.error('Failed to load availability:', err)
-    availableSlots.value = []
+    slots.value = []
   } finally {
     loadingSlots.value = false
   }
 }
 
-// Build the available time options for the selected date (matching the exact date)
-const timeOptions = computed(() => {
-  if (!date.value || !availableSlots.value.length) return []
-  
-  // ====== Match the exact selected date ======
-  const slots = availableSlots.value.filter(s => s.available_date === date.value)
-  
-  const options = []
-  slots.forEach(slot => {
-    const start = parseInt(slot.start_time.split(':')[0])
-    const end = parseInt(slot.end_time.split(':')[0])
-    for (let h = start; h < end; h++) {
-      const hourStr = String(h).padStart(2, '0')
-      options.push(`${hourStr}:00`)
-    }
-  })
-  return options
-})
+function selectSlot(slot) {
+  if (slot.is_full) return
+  selectedSlotId.value = slot.availability_id
+}
 
-function onDateChange() {
-  time.value = ''
+function slotHours(slot) {
+  const [sh, sm] = slot.start_time.split(':').map(Number)
+  const [eh, em] = slot.end_time.split(':').map(Number)
+  return Math.max(1, Math.round((eh * 60 + em - (sh * 60 + sm)) / 60))
+}
+
+function slotPrice(slot) {
+  return (props.offering.hourly_rate * slotHours(slot)).toFixed(2)
+}
+
+function formatDate(dateStr) {
+  return new Date(dateStr).toLocaleDateString('en-MY', { weekday: 'short', day: 'numeric', month: 'short' })
 }
 
 async function submitBooking() {
   error.value = ''
-
-  if (!date.value || !time.value) {
-    error.value = 'Please choose a date and time.'
-    return
-  }
-
-  const bookingDateTime = new Date(`${date.value}T${time.value}`)
-  if (bookingDateTime < new Date()) {
-    error.value = 'Please choose a future date and time.'
+  if (!selectedSlotId.value) {
+    error.value = 'Please choose an available slot.'
     return
   }
 
   submitting.value = true
   try {
+    // Slot-based booking: the backend derives time/duration from the slot
+    // and auto-accepts if seats remain.
     await bookingStore.createBooking({
-      tutor_id: props.tutor.user_id,
-      skill_id: props.offering.skill_id,
-      booking_date: bookingDateTime.toISOString(),
-      duration: duration.value
+      availability_id: selectedSlotId.value,
+      skill_id: props.offering.skill_id
     })
-    emit('booked')
+    confirmed.value = true
+    setTimeout(() => emit('booked'), 900)
   } catch (err) {
     error.value = err.message || 'Booking failed.'
   } finally {
@@ -95,9 +75,7 @@ async function submitBooking() {
   }
 }
 
-onMounted(() => {
-  loadAvailability()
-})
+onMounted(loadSlots)
 </script>
 
 <template>
@@ -113,60 +91,63 @@ onMounted(() => {
           with <strong>{{ tutor.name }}</strong> — {{ offering.skill_name }}
         </p>
 
-        <div v-if="error" class="alert alert-danger py-2 small">{{ error }}</div>
+        <div v-if="confirmed" class="alert alert-success">
+          <i class="bi bi-check-circle-fill me-2"></i>Booked &amp; confirmed! Redirecting…
+        </div>
 
-        <form @submit.prevent="submitBooking">
-          <div class="mb-3">
-            <label class="form-label small">Date</label>
-            <input
-              v-model="date"
-              type="date"
-              class="form-control"
-              :min="todayStr"
-              :max="maxDateStr"
-              @change="onDateChange"
-              required
-            />
-            <!-- ====== Added a hint ====== -->
-            <div class="form-text text-muted small">
-              <i class="bi bi-info-circle me-1"></i>
-              Only availability within the <strong>next 7 days</strong> is shown.
-            </div>
-            <!-- ====== End of hint ====== -->
+        <template v-else>
+          <div v-if="error" class="alert alert-danger py-2 small">{{ error }}</div>
+
+          <label class="form-label small">Choose an available slot</label>
+
+          <div v-if="loadingSlots" class="text-muted small py-2">Loading available slots…</div>
+          <div v-else-if="!slots.length" class="text-muted small py-2">
+            This tutor hasn't set any availability yet.
           </div>
 
-          <div class="mb-3">
-            <label class="form-label small">Time</label>
-            <div v-if="loadingSlots" class="text-muted small">Loading available times...</div>
-            <div v-else-if="!date" class="text-muted small">Please select a date first.</div>
-            <div v-else-if="!timeOptions.length" class="text-muted small">No available slots for this day.</div>
-            <select v-else v-model="time" class="form-select" required>
-              <option value="" disabled>Select a time</option>
-              <option v-for="opt in timeOptions" :key="opt" :value="opt">
-                {{ opt }}
-              </option>
-            </select>
+          <div v-else class="slot-list mb-3">
+            <button
+              v-for="slot in slots"
+              :key="slot.availability_id"
+              type="button"
+              class="slot-item d-flex justify-content-between align-items-center w-100 mb-2 p-2 rounded border"
+              :class="{
+                'border-primary bg-light': selectedSlotId === slot.availability_id,
+                'slot-full text-muted': slot.is_full
+              }"
+              :disabled="slot.is_full"
+              @click="selectSlot(slot)"
+            >
+              <span class="text-start">
+                <span class="d-block fw-semibold">
+                  {{ formatDate(slot.available_date) }} · {{ slot.start_time.slice(0,5) }}–{{ slot.end_time.slice(0,5) }}
+                </span>
+                <span class="small">
+                  <i :class="slot.type === 'Group' ? 'bi bi-people-fill text-info' : 'bi bi-person-fill text-secondary'" class="me-1"></i>
+                  {{ slot.type }}
+                  <template v-if="slot.type === 'Group'"> · {{ slot.seats_left }} seat(s) left</template>
+                  <template v-else-if="slot.is_full"> · taken</template>
+                </span>
+              </span>
+              <span class="fw-bold text-primary-ss">RM{{ slotPrice(slot) }}</span>
+            </button>
           </div>
 
-          <div class="mb-3">
-            <label class="form-label small">Duration (hours)</label>
-            <select v-model="duration" class="form-select">
-              <option :value="1">1 hour</option>
-              <option :value="2">2 hours</option>
-              <option :value="3">3 hours</option>
-            </select>
-          </div>
+          <p class="text-muted small">
+            <i class="bi bi-lightning-charge me-1"></i>
+            Booking a slot with free seats is <strong>confirmed instantly</strong>.
+          </p>
 
-          <div class="d-flex justify-content-between align-items-center py-2 border-top border-bottom mb-3">
-            <span class="text-muted small">Total</span>
-            <span class="fw-bold text-primary-ss">RM{{ totalAmount.toFixed(2) }}</span>
-          </div>
-
-          <button type="submit" class="btn btn-primary w-100" :disabled="submitting">
+          <button
+            type="button"
+            class="btn btn-primary w-100"
+            :disabled="submitting || !selectedSlotId"
+            @click="submitBooking"
+          >
             <span v-if="submitting" class="spinner-border spinner-border-sm me-2"></span>
-            {{ submitting ? 'Sending request...' : 'Send Booking Request' }}
+            {{ submitting ? 'Booking…' : 'Book this slot' }}
           </button>
-        </form>
+        </template>
       </div>
     </div>
   </div>
@@ -189,5 +170,21 @@ onMounted(() => {
   border-radius: 16px;
   max-width: 420px;
   width: 100%;
+}
+
+.slot-list {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.slot-item {
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.slot-item.slot-full {
+  cursor: not-allowed;
+  background: #f8f9fa;
 }
 </style>

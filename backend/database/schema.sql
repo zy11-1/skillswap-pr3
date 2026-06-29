@@ -74,10 +74,13 @@ CREATE TABLE IF NOT EXISTS Booking (
     status          ENUM('Pending', 'Accepted', 'Completed', 'Cancelled') NOT NULL DEFAULT 'Pending',
     total_amount    DECIMAL(10,2) NOT NULL,
     recording_url   VARCHAR(255) NULL,
+    availability_id INT NULL,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_booking_learner FOREIGN KEY (learner_id) REFERENCES User(user_id) ON DELETE CASCADE,
     CONSTRAINT fk_booking_tutor FOREIGN KEY (tutor_id) REFERENCES User(user_id) ON DELETE CASCADE,
     CONSTRAINT fk_booking_skill FOREIGN KEY (skill_id) REFERENCES Skill(skill_id) ON DELETE CASCADE
+    -- FK to TutorAvailability added via ALTER below (that table is
+    -- defined later in this file, so the constraint can't be inline here)
 ) ENGINE=InnoDB;
 
 -- ---------------------------------------------------------------
@@ -120,7 +123,9 @@ CREATE TABLE IF NOT EXISTS WalletTransaction (
     CONSTRAINT fk_wallet_booking FOREIGN KEY (booking_id) REFERENCES Booking(booking_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 -- ---------------------------------------------------------------
--- 9. TutorAvailability (导师空闲时间)
+-- 9. TutorAvailability (a tutor's free time slots)
+--    capacity = how many learners can book this slot:
+--    1 = Solo session, >1 = Group session.
 -- ---------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS TutorAvailability (
     availability_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -128,8 +133,15 @@ CREATE TABLE IF NOT EXISTS TutorAvailability (
     available_date DATE NOT NULL,
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
+    capacity INT NOT NULL DEFAULT 1,
     CONSTRAINT fk_availability_tutor FOREIGN KEY (tutor_id) REFERENCES User(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
+
+-- Booking -> TutorAvailability link (declared here because both tables
+-- now exist; ON DELETE SET NULL keeps historical bookings if a slot is removed)
+ALTER TABLE Booking
+    ADD CONSTRAINT fk_booking_availability
+    FOREIGN KEY (availability_id) REFERENCES TutorAvailability(availability_id) ON DELETE SET NULL;
 -- ---------------------------------------------------------------
 -- 10. MeritRequest (tutor converts platform credits -> university merits)
 -- ---------------------------------------------------------------

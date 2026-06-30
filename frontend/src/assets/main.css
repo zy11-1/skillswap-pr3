@@ -8,6 +8,12 @@
   --ss-text: #1f2430;
 }
 
+/* Mode-based theming: the whole accent re-colours by which "hat" you wear.
+   Learner = green, Tutor = blue (brand), Admin = slate/near-black. */
+.theme-learner { --ss-primary: #1f9d57; --ss-primary-dark: #15803d; }
+.theme-tutor   { --ss-primary: #2f6fed; --ss-primary-dark: #1d4fc7; }
+.theme-admin   { --ss-primary: #2b3445; --ss-primary-dark: #161b26; }
+
 body {
   background-color: var(--ss-bg);
   color: var(--ss-text);
@@ -84,5 +90,5 @@ body {
 .wallet-card {
   border-radius: 16px;
   color: white;
-  background: linear-gradient(135deg, #2f6fed 0%, #1a3da6 100%);
+  background: linear-gradient(135deg, var(--ss-primary) 0%, var(--ss-primary-dark) 100%);
 }

@@ -11,6 +11,12 @@ const defaultAvatar = 'https://i.pravatar.cc/150?img=1'
 
 const showNavbar = computed(() => auth.isLoggedIn && !route.meta.guestOnly)
 
+// Accent theme follows the active "hat": admin = slate, tutor = blue, learner = green.
+const themeClass = computed(() => {
+  if (auth.isAdmin) return 'theme-admin'
+  return auth.isTutorMode ? 'theme-tutor' : 'theme-learner'
+})
+
 function switchMode(mode) {
   auth.setMode(mode)
   // Send the user to the home screen of the mode they picked.
@@ -24,6 +30,7 @@ function handleLogout() {
 </script>
 
 <template>
+  <div :class="themeClass">
   <nav v-if="showNavbar" class="navbar navbar-expand-lg navbar-dark bg-primary-ss shadow-sm">
     <div class="container">
       <router-link class="navbar-brand" to="/marketplace">
@@ -100,4 +107,5 @@ function handleLogout() {
   </nav>
 
   <router-view />
+  </div>
 </template>

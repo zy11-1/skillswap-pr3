@@ -58,6 +58,15 @@ async addAvailability(data) {
   return res.data
 },
 
+async getSlotByToken(token) {
+  try {
+    const res = await http.get(`/api/slots/${token}`)
+    return res.data
+  } catch (err) {
+    throw unwrapError(err)
+  }
+},
+
 async updateAvailability(availabilityId, data) {
   try {
     const res = await http.patch(`/api/tutor/availability/${availabilityId}`, data)

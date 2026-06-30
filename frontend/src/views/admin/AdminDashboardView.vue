@@ -157,7 +157,7 @@ async function approve(userId) {
       <p v-else class="text-muted small mb-4">No document requests awaiting review.</p>
 
       <!-- Merit conversion requests -->
-      <h6 class="fw-bold mb-3">Merit Conversion Requests</h6>
+      <h6 class="fw-bold mb-3">UTM Merit Transfer Applications</h6>
       <div v-if="meritRequests.length" class="card border-0 shadow-sm mb-4">
         <div class="table-responsive">
           <table class="table mb-0 align-middle">
@@ -165,8 +165,10 @@ async function approve(userId) {
               <tr class="text-muted small">
                 <th>Name</th>
                 <th>Faculty</th>
-                <th>Credits</th>
-                <th>Merits</th>
+                <th>Classes</th>
+                <th>Students</th>
+                <th>Rating</th>
+                <th>Reviews</th>
                 <th class="text-end">Action</th>
               </tr>
             </thead>
@@ -174,8 +176,10 @@ async function approve(userId) {
               <tr v-for="r in meritRequests" :key="r.merit_request_id">
                 <td>{{ r.name }}</td>
                 <td>{{ r.faculty }}</td>
-                <td>RM{{ Number(r.credits_amount).toFixed(2) }}</td>
-                <td>{{ r.merit_points }}</td>
+                <td>{{ r.classes_completed }}</td>
+                <td>{{ r.students_helped }}</td>
+                <td>{{ r.avg_rating }}★</td>
+                <td>{{ r.review_count }}</td>
                 <td class="text-end">
                   <button
                     class="btn btn-success btn-sm me-1"

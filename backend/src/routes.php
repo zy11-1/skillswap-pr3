@@ -136,8 +136,8 @@ $app->delete('/api/tutor/availability/{id}', [TutorController::class, 'deleteAva
     // Merit conversion (tutor converts credits -> university merits)
     // ---------------------------------------------------------------
     $app->group('/api/merits', function ($group) {
-        $group->post('', [MeritController::class, 'request']);
-        $group->get('/me', [MeritController::class, 'myMerits']);
+        $group->get('/standing', [MeritController::class, 'standing']);
+        $group->post('/apply', [MeritController::class, 'apply']);
     })->add($jwtMiddleware);
 
     // ---------------------------------------------------------------

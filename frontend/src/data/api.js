@@ -323,15 +323,15 @@ async deleteAvailability(availabilityId) {
     }
   },
 
-  // ---------- MERITS ----------
-  async getMyMerits() {
-    const res = await http.get('/api/merits/me')
+  // ---------- MERITS (performance-based) ----------
+  async getMeritStanding() {
+    const res = await http.get('/api/merits/standing')
     return res.data
   },
 
-  async requestMeritConversion(credits) {
+  async applyForMerit() {
     try {
-      const res = await http.post('/api/merits', { credits })
+      const res = await http.post('/api/merits/apply')
       return res.data
     } catch (err) {
       throw unwrapError(err)

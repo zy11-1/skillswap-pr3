@@ -84,6 +84,24 @@ function newTimeLabel(b) {
   return `${b.slot_date} ${(b.slot_start || '').slice(0, 5)}–${(b.slot_end || '').slice(0, 5)}`
 }
 
+// Tutor can refine the class topic / "what you'll cover" right from the card.
+// Reuses the syllabus endpoint, which updates the shared slot for everyone.
+const topicDrafts = ref({})
+const savingTopic = ref(null)
+async function saveTopic(b) {
+  const text = (topicDrafts.value[b.booking_id] ?? b.slot_topics ?? '').trim()
+  if (!text) return
+  savingTopic.value = b.booking_id
+  try {
+    await api.setSyllabus(b.availability_id, text)
+    await bookingStore.fetchAsTutor()
+  } catch (err) {
+    alert(err.message || 'Could not update the topic.')
+  } finally {
+    savingTopic.value = null
+  }
+}
+
 const recordingDrafts = ref({})
 const savingRecording = ref(null)
 async function saveRecording(b) {
@@ -213,6 +231,27 @@ function formatDate(dateStr) {
               <a v-if="b.recording_url" :href="b.recording_url" target="_blank" rel="noopener" class="small d-inline-block mt-1">
                 <i class="bi bi-camera-video me-1"></i>Watch current recording
               </a>
+            </div>
+
+            <!-- Edit the class topic / agenda inline (slot-based classes only) -->
+            <div v-if="b.availability_id && (b.status === 'Accepted' || b.status === 'Completed')" class="mt-3 pt-2 border-top">
+              <label class="form-label small text-muted mb-1">
+                <i class="bi bi-bookmark me-1"></i>Topic / what you'll cover
+              </label>
+              <div class="input-group input-group-sm" style="max-width: 520px">
+                <input
+                  :value="topicDrafts[b.booking_id] ?? b.slot_topics ?? ''"
+                  type="text"
+                  class="form-control"
+                  placeholder="e.g. Vue.js — Part 2: components & props"
+                  @input="topicDrafts[b.booking_id] = $event.target.value"
+                  @keyup.enter="saveTopic(b)"
+                />
+                <button class="btn btn-outline-primary" :disabled="savingTopic === b.booking_id" @click="saveTopic(b)">
+                  {{ savingTopic === b.booking_id ? '...' : 'Update topic' }}
+                </button>
+              </div>
+              <span class="text-muted" style="font-size:.7rem">Updates this class for everyone enrolled.</span>
             </div>
           </div>
         </div>

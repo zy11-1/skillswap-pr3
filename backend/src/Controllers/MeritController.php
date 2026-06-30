@@ -141,6 +141,42 @@ class MeritController
     }
 
     /**
+     * GET /api/admin/merits/{id} (admin) — full detail: user info + reviews + result link.
+     */
+    public function adminDetail(Request $request, Response $response, array $args): Response
+    {
+        $requestId = (int) $args['id'];
+        $db = Database::getConnection();
+
+        $stmt = $db->prepare(
+            'SELECT mr.*, u.name, u.email, u.faculty, u.year_of_study, u.photo_url
+             FROM MeritRequest mr
+             JOIN User u ON u.user_id = mr.user_id
+             WHERE mr.merit_request_id = :id'
+        );
+        $stmt->execute(['id' => $requestId]);
+        $mr = $stmt->fetch();
+
+        if (!$mr) {
+            return $this->json($response, ['error' => 'Merit application not found.'], 404);
+        }
+
+        $stmt = $db->prepare(
+            'SELECT r.review_id, r.rating, r.comment, r.created_at, u.name AS learner_name
+             FROM Review r
+             JOIN Booking b ON b.booking_id = r.booking_id
+             JOIN User u ON u.user_id = b.learner_id
+             WHERE b.tutor_id = :tutor_id
+             ORDER BY r.created_at DESC
+             LIMIT 20'
+        );
+        $stmt->execute(['tutor_id' => (int) $mr['user_id']]);
+        $mr['reviews'] = $stmt->fetchAll();
+
+        return $this->json($response, ['data' => $mr], 200);
+    }
+
+    /**
      * PATCH /api/admin/merits/{id} (admin) — Body: { status: Approved|Rejected }
      */
     public function adminReview(Request $request, Response $response, array $args): Response

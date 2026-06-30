@@ -104,6 +104,7 @@ $app->delete('/api/tutor/availability/{id}', [TutorController::class, 'deleteAva
         $group->patch('/{id}/status', [BookingController::class, 'updateStatus']);
         $group->patch('/{id}/recording', [BookingController::class, 'setRecording']);
         $group->patch('/{id}/time-change', [BookingController::class, 'respondTimeChange']);
+        $group->post('/{id}/dispute', [BookingController::class, 'submitDispute']);
     })->add($jwtMiddleware);
 
     // ---------------------------------------------------------------
@@ -149,13 +150,28 @@ $app->delete('/api/tutor/availability/{id}', [TutorController::class, 'deleteAva
     // Admin (requires JWT + admin role)
     // ---------------------------------------------------------------
     $app->group('/api/admin', function ($group) {
+        // Users
         $group->get('/users', [AdminController::class, 'listUsers']);
+        $group->patch('/users/{id}', [AdminController::class, 'updateUser']);
+        $group->delete('/users/{id}', [AdminController::class, 'deleteUser']);
+        $group->patch('/users/{id}/verify', [AdminController::class, 'verifyTutor']);
+        // Verifications
         $group->get('/verifications/pending', [AdminController::class, 'pendingVerifications']);
         $group->get('/verifications/requests', [AdminController::class, 'verificationRequests']);
         $group->patch('/verifications/requests/{id}', [AdminController::class, 'reviewVerification']);
-        $group->patch('/users/{id}/verify', [AdminController::class, 'verifyTutor']);
+        // Merits
         $group->get('/merits', [MeritController::class, 'adminList']);
+        $group->get('/merits/{id}', [MeritController::class, 'adminDetail']);
         $group->patch('/merits/{id}', [MeritController::class, 'adminReview']);
+        // Content moderation
+        $group->get('/reviews', [AdminController::class, 'listReviews']);
+        $group->delete('/reviews/{id}', [AdminController::class, 'deleteReview']);
+        // Disputes
+        $group->get('/disputes', [AdminController::class, 'listDisputes']);
+        $group->patch('/disputes/{id}', [AdminController::class, 'resolveDispute']);
+        // Stats + platform-wide bookings
+        $group->get('/stats', [AdminController::class, 'getStats']);
+        $group->get('/bookings', [AdminController::class, 'listAllBookings']);
     })
         ->add(new RoleMiddleware(['admin']))
         ->add($jwtMiddleware);

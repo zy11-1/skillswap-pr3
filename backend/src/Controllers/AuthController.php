@@ -113,6 +113,10 @@ class AuthController
             return $this->json($response, ['error' => 'Invalid email or password.'], 401);
         }
 
+        if (isset($user['is_active']) && !(bool) $user['is_active']) {
+            return $this->json($response, ['error' => 'This account has been suspended. Please contact the administrator.'], 403);
+        }
+
         unset($user['password_hash']);
         $token = $this->issueToken($user);
 

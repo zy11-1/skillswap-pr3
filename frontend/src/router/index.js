@@ -99,16 +99,16 @@ router.beforeEach((to) => {
   }
 
   if (to.meta.guestOnly && auth.isLoggedIn) {
-    return { name: 'marketplace' }
+    return auth.isAdmin ? { name: 'admin-dashboard' } : { name: 'marketplace' }
   }
 
   if (to.meta.role && auth.user?.role !== to.meta.role) {
-    return { name: 'marketplace' }
+    return auth.isAdmin ? { name: 'admin-dashboard' } : { name: 'marketplace' }
   }
 
   // Tutor-only screens require being in tutor mode (admins excepted).
   if (to.meta.tutorMode && !auth.isTutorMode) {
-    return { name: 'marketplace' }
+    return auth.isAdmin ? { name: 'admin-dashboard' } : { name: 'marketplace' }
   }
 
   return true

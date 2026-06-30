@@ -46,7 +46,7 @@ class BookingController
             JOIN User tutor ON tutor.user_id = b.tutor_id
             JOIN Skill s ON s.skill_id = b.skill_id
             LEFT JOIN Review r ON r.booking_id = b.booking_id
-            LEFT JOIN TutorAvailability ta ON ta.availability_id = b.availability_id
+            LEFT JOIN TutorAvailability ta ON ta.availability_id = b.availability_id AND ta.status <> 'Cancelled'
             WHERE $column = :user_id
             ORDER BY b.booking_date DESC
         ");

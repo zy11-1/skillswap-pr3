@@ -1,12 +1,10 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useAuthStore } from '@/stores/auth'
 import { useBookingStore } from '@/stores/booking'
 import { api } from '@/data/api'
 import ReviewModal from '@/components/review/ReviewModal.vue'
 import { downloadBookingIcs } from '@/utils/ics'
 
-const auth = useAuthStore()
 const bookingStore = useBookingStore()
 
 const statusFilter = ref('All')
@@ -16,16 +14,16 @@ const statuses = ['All', 'Pending', 'Accepted', 'Completed', 'Cancelled']
 const reviewingBooking = ref(null)
 
 onMounted(async () => {
-  await bookingStore.fetchBookings()
+  // "My Bookings" is always the learner's view — what I booked — regardless
+  // of which mode (hat) I'm currently wearing.
+  await bookingStore.fetchAsLearner()
   promptForPendingReview()
 })
 
 // Forced review prompt (§6.1.5): once a session is Completed and hasn't
-// been reviewed, automatically open the review modal for it. Learner mode
-// only — a tutor isn't the one leaving the review.
+// been reviewed, automatically open the review modal for it.
 function promptForPendingReview() {
-  if (auth.isTutorMode) return
-  const needsReview = bookingStore.bookings.find(
+  const needsReview = bookingStore.learnerBookings.find(
     (b) => b.status === 'Completed' && !b.review_id
   )
   if (needsReview) reviewingBooking.value = needsReview
@@ -37,22 +35,22 @@ function openReview(booking) {
 
 function handleReviewSaved() {
   reviewingBooking.value = null
-  bookingStore.fetchBookings()
+  bookingStore.fetchAsLearner()
 }
 
 async function deleteReview(booking) {
   if (!confirm('Delete your review for this session?')) return
   try {
     await api.deleteReview(booking.review_id)
-    bookingStore.fetchBookings()
+    bookingStore.fetchAsLearner()
   } catch (err) {
     alert(err.message || 'Could not delete review.')
   }
 }
 
 const filteredBookings = computed(() => {
-  if (statusFilter.value === 'All') return bookingStore.bookings
-  return bookingStore.bookings.filter((b) => b.status === statusFilter.value)
+  if (statusFilter.value === 'All') return bookingStore.learnerBookings
+  return bookingStore.learnerBookings.filter((b) => b.status === statusFilter.value)
 })
 
 function statusClass(status) {
@@ -84,7 +82,7 @@ function formatDate(dateStr) {
       </button>
     </div>
 
-    <div v-if="bookingStore.loading" class="text-center py-5">
+    <div v-if="bookingStore.loadingLearner" class="text-center py-5">
       <div class="spinner-border text-primary-ss"></div>
     </div>
 
@@ -92,18 +90,18 @@ function formatDate(dateStr) {
       <table class="table align-middle bg-white shadow-sm rounded">
         <thead>
           <tr class="text-muted small">
-            <th>{{ auth.isTutorMode ? 'Learner' : 'Tutor' }}</th>
+            <th>Tutor</th>
             <th>Skill</th>
             <th>Date & Time</th>
             <th>Duration</th>
             <th>Amount</th>
             <th>Status</th>
-            <th v-if="!auth.isTutorMode">Review</th>
+            <th>Review</th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="b in filteredBookings" :key="b.booking_id">
-            <td>{{ auth.isTutorMode ? b.learner_name : b.tutor_name }}</td>
+            <td>{{ b.tutor_name }}</td>
             <td>
               {{ b.skill_name }}
               <template v-if="b.slot_mode && b.status !== 'Cancelled'">
@@ -150,7 +148,7 @@ function formatDate(dateStr) {
                 <i class="bi bi-camera-video me-1"></i>Watch recording
               </a>
             </td>
-            <td v-if="!auth.isTutorMode">
+            <td>
               <!-- Reviews only make sense once a session is Completed -->
               <template v-if="b.status === 'Completed'">
                 <div v-if="b.review_id" class="d-flex align-items-center gap-2">
@@ -173,9 +171,13 @@ function formatDate(dateStr) {
 
     <div v-else class="text-center py-5 text-muted">
       <i class="bi bi-calendar-x" style="font-size: 2rem"></i>
-      <p class="mt-2">No bookings in this category yet.</p>
+      <p class="mt-2">
+        {{ statusFilter === 'All'
+            ? "You haven't booked any sessions yet."
+            : `No ${statusFilter.toLowerCase()} bookings.` }}
+      </p>
       <router-link to="/marketplace" class="btn btn-primary btn-sm">
-        Browse Tutors
+        Find a tutor
       </router-link>
     </div>
 

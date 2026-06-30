@@ -47,6 +47,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/calendar',
+    name: 'calendar',
+    component: () => import('@/views/CalendarView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/group-classes',
     name: 'group-classes',
     component: () => import('@/views/GroupClassesView.vue'),

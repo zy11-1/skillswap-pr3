@@ -20,7 +20,8 @@ function blankSlot() {
     resources: '',
     outcomes: '',
     visibility: 'Public', // 'Public' (browsable) or 'Private' (invite link only)
-    auto_accept: true     // instant confirm vs manual approval
+    auto_accept: true,    // instant confirm vs manual approval
+    payment_timing: 'postpay' // 'postpay' (pay after) or 'prepay' (pay at booking)
   }
 }
 
@@ -209,7 +210,8 @@ async function addSlot() {
       resources: newSlot.value.resources,
       outcomes: newSlot.value.outcomes,
       visibility: newSlot.value.visibility,
-      auto_accept: newSlot.value.auto_accept ? 1 : 0
+      auto_accept: newSlot.value.auto_accept ? 1 : 0,
+      payment_timing: newSlot.value.payment_timing
     })
     // Reload so the new slot shows its capacity/seats from the server.
     await loadAvailability()
@@ -233,7 +235,8 @@ function startEdit(slot) {
     resources: slot.resources || '',
     outcomes: slot.outcomes || '',
     visibility: slot.visibility || 'Public',
-    auto_accept: slot.auto_accept !== false
+    auto_accept: slot.auto_accept !== false,
+    payment_timing: slot.payment_timing || 'postpay'
   }
 }
 
@@ -257,7 +260,8 @@ async function saveEdit(slot) {
       resources: editForm.value.resources,
       outcomes: editForm.value.outcomes,
       visibility: editForm.value.visibility,
-      auto_accept: editForm.value.auto_accept ? 1 : 0
+      auto_accept: editForm.value.auto_accept ? 1 : 0,
+      payment_timing: editForm.value.payment_timing
     })
     editingId.value = null
     await loadAvailability()
@@ -638,6 +642,13 @@ onMounted(() => {
                     <option :value="false">I approve each request</option>
                   </select>
                 </div>
+                <div class="col-md-6">
+                  <label class="form-label small">Payment</label>
+                  <select v-model="editForm.payment_timing" class="form-select form-select-sm">
+                    <option value="postpay">Pay after the session</option>
+                    <option value="prepay">Pay when booking (held)</option>
+                  </select>
+                </div>
               </div>
               <div class="mt-2 d-flex gap-2">
                 <button class="btn btn-sm btn-primary" :disabled="savingEdit" @click="saveEdit(slot)">
@@ -712,6 +723,13 @@ onMounted(() => {
             <select v-model="newSlot.auto_accept" class="form-select form-select-sm">
               <option :value="true">Auto-accept (instant confirm)</option>
               <option :value="false">I approve each request</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small">Payment</label>
+            <select v-model="newSlot.payment_timing" class="form-select form-select-sm">
+              <option value="postpay">Pay after the session</option>
+              <option value="prepay">Pay when booking (held)</option>
             </select>
           </div>
           <div class="col-md-2">

@@ -246,9 +246,25 @@ class BookingController
             $autoAccept = (int) ($slot['auto_accept'] ?? 1) === 1;
             $status = $autoAccept ? 'Accepted' : 'Pending';
 
+            // Prepay slots charge the learner now (held until the session
+            // completes, refunded if declined/cancelled). Postpay settles later.
+            $paymentTiming = ($slot['payment_timing'] ?? 'postpay') === 'prepay' ? 'prepay' : 'postpay';
+            $isPaid = 0;
+            if ($paymentTiming === 'prepay') {
+                $stmt = $db->prepare('SELECT wallet_balance FROM User WHERE user_id = :id');
+                $stmt->execute(['id' => $learnerId]);
+                if ((float) $stmt->fetchColumn() < $totalAmount) {
+                    $db->rollBack();
+                    return $this->json($response, ['error' => 'This is a prepay session — you need RM' . number_format($totalAmount, 2) . ' in your wallet to book it.'], 422);
+                }
+                $db->prepare('UPDATE User SET wallet_balance = wallet_balance - :amt WHERE user_id = :id')
+                   ->execute(['amt' => $totalAmount, 'id' => $learnerId]);
+                $isPaid = 1;
+            }
+
             $stmt = $db->prepare(
-                "INSERT INTO Booking (learner_id, tutor_id, skill_id, booking_date, duration, status, total_amount, availability_id)
-                 VALUES (:learner_id, :tutor_id, :skill_id, :booking_date, :duration, :status, :total_amount, :availability_id)"
+                "INSERT INTO Booking (learner_id, tutor_id, skill_id, booking_date, duration, status, total_amount, availability_id, payment_timing, is_paid)
+                 VALUES (:learner_id, :tutor_id, :skill_id, :booking_date, :duration, :status, :total_amount, :availability_id, :payment_timing, :is_paid)"
             );
             $stmt->execute([
                 'learner_id' => $learnerId,
@@ -259,8 +275,16 @@ class BookingController
                 'status' => $status,
                 'total_amount' => $totalAmount,
                 'availability_id' => $availabilityId,
+                'payment_timing' => $paymentTiming,
+                'is_paid' => $isPaid,
             ]);
             $bookingId = (int) $db->lastInsertId();
+
+            // Record the prepay debit on the learner's ledger.
+            if ($isPaid) {
+                $db->prepare("INSERT INTO WalletTransaction (user_id, amount, type, booking_id) VALUES (:uid, :amt, 'Debit', :bid)")
+                   ->execute(['uid' => $learnerId, 'amt' => $totalAmount, 'bid' => $bookingId]);
+            }
 
             $db->commit();
         } catch (\Throwable $e) {
@@ -325,40 +349,40 @@ class BookingController
             // commission (CLO3) and the tutor receives the remaining 90%.
             // Crediting the platform/admin account keeps the closed-loop
             // ledger balanced (total credits == total debits).
+            $amount = (float) $booking['total_amount'];
+            $updateBalance = $db->prepare('UPDATE User SET wallet_balance = wallet_balance + :amount WHERE user_id = :id');
+            $insertTxn = $db->prepare(
+                'INSERT INTO WalletTransaction (user_id, amount, type, booking_id) VALUES (:user_id, :amount, :type, :booking_id)'
+            );
+
             if ($newStatus === 'Completed') {
-                $amount = (float) $booking['total_amount'];
+                // Settle: platform takes 10% (CLO3), tutor gets 90%. For
+                // postpay the learner pays now; for prepay they already paid
+                // at booking, so we only pay out the tutor + platform.
                 $commission = round($amount * self::COMMISSION_RATE, 2);
                 $tutorNet = round($amount - $commission, 2);
 
-                $updateBalance = $db->prepare('UPDATE User SET wallet_balance = wallet_balance + :amount WHERE user_id = :id');
-                $insertTxn = $db->prepare(
-                    'INSERT INTO WalletTransaction (user_id, amount, type, booking_id) VALUES (:user_id, :amount, :type, :booking_id)'
-                );
+                if ((int) $booking['is_paid'] !== 1) {
+                    $updateBalance->execute(['amount' => -$amount, 'id' => $booking['learner_id']]);
+                    $insertTxn->execute(['user_id' => $booking['learner_id'], 'amount' => $amount, 'type' => 'Debit', 'booking_id' => $bookingId]);
+                    $db->prepare('UPDATE Booking SET is_paid = 1 WHERE booking_id = :id')->execute(['id' => $bookingId]);
+                }
 
-                // Learner pays the full amount.
-                $updateBalance->execute(['amount' => -$amount, 'id' => $booking['learner_id']]);
-                $insertTxn->execute([
-                    'user_id' => $booking['learner_id'], 'amount' => $amount, 'type' => 'Debit', 'booking_id' => $bookingId
-                ]);
-
-                // Tutor receives 90%.
                 $updateBalance->execute(['amount' => $tutorNet, 'id' => $booking['tutor_id']]);
-                $insertTxn->execute([
-                    'user_id' => $booking['tutor_id'], 'amount' => $tutorNet, 'type' => 'Credit', 'booking_id' => $bookingId
-                ]);
+                $insertTxn->execute(['user_id' => $booking['tutor_id'], 'amount' => $tutorNet, 'type' => 'Credit', 'booking_id' => $bookingId]);
 
-                // Platform keeps the 10% commission (credited to the admin
-                // account, if one exists, so revenue is visible in the ledger).
                 if ($commission > 0) {
-                    $adminStmt = $db->query("SELECT user_id FROM User WHERE role = 'admin' ORDER BY user_id LIMIT 1");
-                    $adminId = $adminStmt->fetchColumn();
+                    $adminId = $db->query("SELECT user_id FROM User WHERE role = 'admin' ORDER BY user_id LIMIT 1")->fetchColumn();
                     if ($adminId) {
                         $updateBalance->execute(['amount' => $commission, 'id' => $adminId]);
-                        $insertTxn->execute([
-                            'user_id' => $adminId, 'amount' => $commission, 'type' => 'Credit', 'booking_id' => $bookingId
-                        ]);
+                        $insertTxn->execute(['user_id' => $adminId, 'amount' => $commission, 'type' => 'Credit', 'booking_id' => $bookingId]);
                     }
                 }
+            } elseif ($newStatus === 'Cancelled' && (int) $booking['is_paid'] === 1) {
+                // Refund a prepaid booking that's being cancelled/declined.
+                $updateBalance->execute(['amount' => $amount, 'id' => $booking['learner_id']]);
+                $insertTxn->execute(['user_id' => $booking['learner_id'], 'amount' => $amount, 'type' => 'Credit', 'booking_id' => $bookingId]);
+                $db->prepare('UPDATE Booking SET is_paid = 0 WHERE booking_id = :id')->execute(['id' => $bookingId]);
             }
 
             $db->commit();

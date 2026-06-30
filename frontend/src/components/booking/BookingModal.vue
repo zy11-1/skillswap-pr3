@@ -140,6 +140,9 @@ onMounted(loadSlots)
                     · <i :class="slot.auto_accept ? 'bi bi-lightning-charge' : 'bi bi-hourglass-split'"></i>
                     {{ slot.auto_accept ? 'Instant' : 'Needs approval' }}
                   </span>
+                  <span v-if="slot.payment_timing === 'prepay'" class="badge bg-warning text-dark ms-1">
+                    <i class="bi bi-wallet2 me-1"></i>Pay now
+                  </span>
                 </span>
                 <span v-if="slot.mode === 'Physical' && slot.location" class="small d-block text-muted">
                   <i class="bi bi-geo-alt me-1"></i>{{ slot.location }}

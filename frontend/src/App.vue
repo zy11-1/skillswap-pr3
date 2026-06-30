@@ -141,6 +141,9 @@ function handleLogout() {
           <li v-if="!auth.isAdmin && auth.isLearnerMode" class="nav-item">
             <router-link class="nav-link" to="/marketplace">Marketplace</router-link>
           </li>
+          <li v-if="!auth.isAdmin && auth.isLearnerMode" class="nav-item">
+            <router-link class="nav-link" to="/upcoming">Upcoming Classes</router-link>
+          </li>
           <li v-if="!auth.isAdmin && auth.isTutorMode" class="nav-item">
             <router-link class="nav-link" to="/tutor-dashboard">Tutor Dashboard</router-link>
           </li>

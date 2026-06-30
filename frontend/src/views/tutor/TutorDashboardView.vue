@@ -775,7 +775,7 @@ onMounted(() => {
             <p class="text-muted small mb-0">
               <i class="bi bi-info-circle me-1"></i>
               The <strong>first student</strong> to book picks the topic; you then add what you'll cover and the
-              class opens on the marketplace's <strong>Upcoming classes</strong> board for others to join.
+              class opens on the <strong>Upcoming Classes</strong> board for others to join.
               Price starts at your base rate and drops RM1 for every extra person who books (min RM10/hr) —
               earlier joiners are refunded the difference when the class finishes. Bookings are prepaid and wait
               for your approval.

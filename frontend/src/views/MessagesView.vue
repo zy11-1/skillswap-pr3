@@ -48,12 +48,22 @@ async function send() {
   const text = draft.value.trim()
   if (!text || !activeUser.value) return
   sending.value = true
+
+  // Optimistic UI: show the sent bubble immediately, then reconcile with the
+  // server. If the send fails we roll the bubble back and restore the draft.
+  const tempId = `temp-${Date.now()}`
+  messages.value.push({ message_id: tempId, sender_id: auth.user?.user_id, body: text })
+  draft.value = ''
+  await nextTick()
+  threadEnd.value?.scrollIntoView({ behavior: 'smooth' })
+
   try {
     await api.sendMessage(activeUser.value.user_id, text)
-    draft.value = ''
     await refreshThread()
     await loadConversations()
   } catch (err) {
+    messages.value = messages.value.filter((m) => m.message_id !== tempId)
+    draft.value = text
     alert(err.message || 'Could not send message.')
   } finally {
     sending.value = false

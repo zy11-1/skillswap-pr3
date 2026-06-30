@@ -11,6 +11,7 @@ const favorites = useFavoritesStore()
 
 const tutor = ref(null)
 const loading = ref(true)
+const loadError = ref('')
 const showBookingModal = ref(false)
 const selectedOffering = ref(null)
 const bookingSuccess = ref(false)
@@ -18,9 +19,12 @@ const defaultAvatar = 'https://i.pravatar.cc/150?img=1'
 
 async function loadTutor() {
   loading.value = true
+  loadError.value = ''
   try {
     const res = await api.getTutorById(route.params.id)
     tutor.value = res.data
+  } catch (err) {
+    loadError.value = err.message || "We couldn't load this tutor's profile."
   } finally {
     loading.value = false
   }
@@ -59,7 +63,13 @@ function handleBooked() {
       <div class="spinner-border text-primary-ss"></div>
     </div>
 
-    <template v-else-if="tutor">
+    <div v-else-if="!tutor" class="text-center py-5 text-muted">
+      <i class="bi bi-person-x" style="font-size: 2rem"></i>
+      <p class="mt-2">{{ loadError || "This tutor's profile isn't available." }}</p>
+      <router-link to="/marketplace" class="btn btn-primary btn-sm">Back to marketplace</router-link>
+    </div>
+
+    <template v-else>
       <button class="btn btn-link px-0 mb-3" @click="router.back()">
         <i class="bi bi-arrow-left"></i> Back to marketplace
       </button>
@@ -124,7 +134,7 @@ function handleBooked() {
           </div>
 
           <h6 class="fw-bold mt-4 mb-3">Reviews</h6>
-          <div v-if="tutor.reviews.length">
+          <div v-if="tutor.reviews && tutor.reviews.length">
             <div v-for="review in tutor.reviews" :key="review.review_id" class="card border-0 shadow-sm mb-2">
               <div class="card-body py-2">
                 <div class="d-flex justify-content-between">

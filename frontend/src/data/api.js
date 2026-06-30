@@ -28,7 +28,10 @@ http.interceptors.request.use((config) => {
 })
 
 // If the backend ever returns 401 (expired/invalid token), log the
-// user out and send them back to the login screen.
+// user out and send them back to the login screen. Every other error is
+// normalised here into a clean Error(message) so a raw axios string like
+// "Request failed with status code 500" can never reach the UI — including
+// from GET calls that don't wrap themselves in unwrapError.
 http.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -37,13 +40,19 @@ http.interceptors.response.use(
       auth.logout()
       window.location.href = '/login'
     }
-    return Promise.reject(error)
+    const message =
+      error.response?.data?.error ||
+      error.response?.data?.errors?.[0] ||
+      error.message ||
+      'Something went wrong. Please try again.'
+    return Promise.reject(new Error(message))
   }
 )
 
+// Belt-and-suspenders for mutation calls that catch locally. The interceptor
+// above already normalises errors, so by here `error` is a clean Error.
 function unwrapError(error) {
-  const message = error.response?.data?.error || error.response?.data?.errors?.[0] || error.message
-  return new Error(message)
+  return error instanceof Error ? error : new Error(String(error))
 }
 
 export const api = {
@@ -67,7 +76,7 @@ async getSlotByToken(token) {
   }
 },
 
-// Marketplace "Upcoming classes" board: started + published public classes.
+// "Upcoming Classes" board: started + published public classes.
 async getUpcomingClasses() {
   const res = await http.get('/api/classes/upcoming')
   return res.data

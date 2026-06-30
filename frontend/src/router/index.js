@@ -23,6 +23,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/upcoming',
+    name: 'upcoming-classes',
+    component: () => import('@/views/learner/UpcomingClassesView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/tutor/:id',
     name: 'tutor-profile',
     component: () => import('@/views/learner/TutorProfileView.vue'),
@@ -69,6 +75,12 @@ const routes = [
     name: 'admin-dashboard',
     component: () => import('@/views/admin/AdminDashboardView.vue'),
     meta: { requiresAuth: true, role: 'admin' }
+  },
+  {
+    // Catch-all: any unknown URL renders a friendly 404 instead of a blank page.
+    path: '/:pathMatch(.*)*',
+    name: 'not-found',
+    component: () => import('@/views/NotFoundView.vue')
   }
 ]
 

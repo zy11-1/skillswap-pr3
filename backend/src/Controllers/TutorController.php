@@ -186,13 +186,16 @@ class TutorController
     public function trendingSkills(Request $request, Response $response): Response
     {
         $db = Database::getConnection();
+        // Rank by real (non-cancelled) booking activity as a stand-in for
+        // search-trend data; ties and zero-activity skills fall back to name.
         $stmt = $db->query(
-            'SELECT s.skill_id, s.name, s.category, COUNT(b.booking_id) AS booking_count
+            "SELECT s.skill_id, s.name, s.category,
+                    COUNT(b.booking_id) AS booking_count
              FROM Skill s
-             LEFT JOIN Booking b ON b.skill_id = s.skill_id
+             LEFT JOIN Booking b ON b.skill_id = s.skill_id AND b.status <> 'Cancelled'
              GROUP BY s.skill_id, s.name, s.category
              ORDER BY booking_count DESC, s.name ASC
-             LIMIT 6'
+             LIMIT 6"
         );
         $skills = $stmt->fetchAll();
         foreach ($skills as &$s) {

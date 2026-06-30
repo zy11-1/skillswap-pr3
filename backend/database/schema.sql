@@ -140,6 +140,8 @@ CREATE TABLE IF NOT EXISTS TutorAvailability (
     resources TEXT NULL,               -- notes / source links the tutor shares
     outcomes TEXT NULL,                -- what the learner will get out of the session
     status ENUM('Active', 'Cancelled') NOT NULL DEFAULT 'Active',
+    visibility ENUM('Public', 'Private') NOT NULL DEFAULT 'Public',
+    share_token VARCHAR(40) NULL,      -- invite link token for Private slots
     CONSTRAINT fk_availability_tutor FOREIGN KEY (tutor_id) REFERENCES User(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 

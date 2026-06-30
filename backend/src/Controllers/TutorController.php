@@ -263,6 +263,79 @@ class TutorController
     }
 
     /**
+     * GET /api/slots/{token} (public)
+     * Resolve a private slot's invite link to the slot details, the tutor,
+     * and the tutor's bookable skills (so the invitee can pick one + book).
+     */
+    public function slotByToken(Request $request, Response $response, array $args): Response
+    {
+        $token = (string) $args['token'];
+        $viewerId = $this->optionalViewerId($request);
+        $db = Database::getConnection();
+
+        $stmt = $db->prepare(
+            "SELECT ta.*, u.name AS tutor_name, u.photo_url AS tutor_photo, u.faculty AS tutor_faculty
+             FROM TutorAvailability ta JOIN User u ON u.user_id = ta.tutor_id
+             WHERE ta.share_token = :token AND ta.status = 'Active'"
+        );
+        $stmt->execute(['token' => $token]);
+        $slot = $stmt->fetch();
+
+        if (!$slot) {
+            return $this->json($response, ['error' => 'This invite link is invalid or the session was cancelled.'], 404);
+        }
+
+        // Seats taken + the viewer's priority (so reserved seats read right).
+        $stmt = $db->prepare("SELECT COUNT(*) FROM Booking WHERE availability_id = :id AND status <> 'Cancelled'");
+        $stmt->execute(['id' => $slot['availability_id']]);
+        $seatsTaken = (int) $stmt->fetchColumn();
+
+        $stmt = $db->prepare(
+            "SELECT COUNT(*) FROM SlotPriority WHERE new_slot_id = :id AND status = 'Offered' AND expires_at > NOW() AND learner_id <> :v"
+        );
+        $stmt->execute(['id' => $slot['availability_id'], 'v' => $viewerId]);
+        $reservedOthers = (int) $stmt->fetchColumn();
+
+        // The tutor's skills, so the invitee can choose what to be taught.
+        $stmt = $db->prepare(
+            'SELECT us.skill_id, us.hourly_rate, us.level, s.name AS skill_name
+             FROM UserSkill us JOIN Skill s ON s.skill_id = us.skill_id
+             WHERE us.user_id = :tutor_id ORDER BY s.name'
+        );
+        $stmt->execute(['tutor_id' => $slot['tutor_id']]);
+        $offerings = $stmt->fetchAll();
+        foreach ($offerings as &$o) {
+            $o['hourly_rate'] = (float) $o['hourly_rate'];
+        }
+        unset($o);
+
+        $capacity = (int) $slot['capacity'];
+        $data = [
+            'availability_id' => (int) $slot['availability_id'],
+            'tutor_id' => (int) $slot['tutor_id'],
+            'tutor_name' => $slot['tutor_name'],
+            'tutor_photo' => $slot['tutor_photo'],
+            'available_date' => $slot['available_date'],
+            'start_time' => $slot['start_time'],
+            'end_time' => $slot['end_time'],
+            'capacity' => $capacity,
+            'mode' => $slot['mode'],
+            'location' => $slot['location'],
+            'outcomes' => $slot['outcomes'],
+            'resources' => $slot['resources'],
+            'visibility' => $slot['visibility'],
+            'share_token' => $token,
+            'seats_taken' => $seatsTaken,
+            'seats_left' => max(0, $capacity - $seatsTaken - $reservedOthers),
+            'type' => $capacity > 1 ? 'Group' : 'Solo',
+            'offerings' => $offerings,
+        ];
+        $data['is_full'] = $data['seats_left'] <= 0;
+
+        return $this->json($response, ['data' => $data], 200);
+    }
+
+    /**
      * POST /api/tutor/availability
      * Body: { available_date, start_time, end_time }
      */
@@ -396,6 +469,16 @@ class TutorController
         $location = array_key_exists('location', $data) ? trim((string) $data['location']) : (string) ($slot['location'] ?? '');
         $resources = array_key_exists('resources', $data) ? trim((string) $data['resources']) : (string) ($slot['resources'] ?? '');
         $outcomes = array_key_exists('outcomes', $data) ? trim((string) $data['outcomes']) : (string) ($slot['outcomes'] ?? '');
+        $visibility = array_key_exists('visibility', $data)
+            ? (($data['visibility'] === 'Private') ? 'Private' : 'Public')
+            : $slot['visibility'];
+
+        // Going Private mints a token if there isn't one yet; the token is
+        // kept (not regenerated) so an already-shared link stays valid.
+        $shareToken = $slot['share_token'];
+        if ($visibility === 'Private' && empty($shareToken)) {
+            $shareToken = bin2hex(random_bytes(16));
+        }
 
         if ($capacity < 1) {
             return $this->json($response, ['error' => 'capacity must be at least 1.'], 422);
@@ -412,7 +495,8 @@ class TutorController
         $stmt = $db->prepare(
             'UPDATE TutorAvailability
              SET capacity = :capacity, mode = :mode, meeting_link = :meeting_link,
-                 location = :location, resources = :resources, outcomes = :outcomes
+                 location = :location, resources = :resources, outcomes = :outcomes,
+                 visibility = :visibility, share_token = :share_token
              WHERE availability_id = :id'
         );
         $stmt->execute([
@@ -422,10 +506,15 @@ class TutorController
             'location' => $location === '' ? null : $location,
             'resources' => $resources === '' ? null : $resources,
             'outcomes' => $outcomes === '' ? null : $outcomes,
+            'visibility' => $visibility,
+            'share_token' => $shareToken,
             'id' => $availabilityId,
         ]);
 
-        return $this->json($response, ['data' => ['availability_id' => $availabilityId, 'capacity' => $capacity, 'mode' => $mode]], 200);
+        return $this->json($response, ['data' => [
+            'availability_id' => $availabilityId, 'capacity' => $capacity, 'mode' => $mode,
+            'visibility' => $visibility, 'share_token' => $shareToken,
+        ]], 200);
     }
 
     /**

@@ -45,6 +45,8 @@ return function (App $app) {
     $app->get('/api/tutors/{id}', [TutorController::class, 'show']);
     $app->get('/api/skills', [TutorController::class, 'skills']);
     $app->get('/api/skills/trending', [TutorController::class, 'trendingSkills']);
+    // Open a private slot via its invite link token (public)
+    $app->get('/api/slots/{token}', [TutorController::class, 'slotByToken']);
     // ---------------------------------------------------------------
 // Tutor Availability
 // ---------------------------------------------------------------

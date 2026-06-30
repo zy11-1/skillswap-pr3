@@ -163,6 +163,17 @@ class BookingController
             }
 
             $tutorId = (int) $slot['tutor_id'];
+
+            // Private slots can only be booked by someone with the invite
+            // link (the matching share_token must be sent with the booking).
+            if (($slot['visibility'] ?? 'Public') === 'Private') {
+                $token = (string) ($data['share_token'] ?? '');
+                if ($token === '' || !hash_equals((string) $slot['share_token'], $token)) {
+                    $db->rollBack();
+                    return $this->json($response, ['error' => 'This is a private session — you need a valid invite link to book it.'], 403);
+                }
+            }
+
             $bookingDate = $slot['available_date'] . ' ' . $slot['start_time'];
             if (strtotime($bookingDate) < time()) {
                 $db->rollBack();

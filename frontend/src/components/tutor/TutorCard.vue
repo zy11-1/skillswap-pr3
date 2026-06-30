@@ -1,17 +1,37 @@
 <script setup>
-defineProps({
+import { useFavoritesStore } from '@/stores/favorites'
+
+const props = defineProps({
   tutor: {
     type: Object,
     required: true
   }
 })
 
+const favorites = useFavoritesStore()
 const defaultAvatar = 'https://i.pravatar.cc/150?img=1'
+
+async function toggleFav() {
+  try {
+    await favorites.toggle(props.tutor.user_id)
+  } catch (err) {
+    alert(err.message || 'Could not update favourite.')
+  }
+}
 </script>
 
 <template>
   <div class="card card-tutor h-100">
     <div class="card-body d-flex flex-column">
+      <!-- Favourite heart (top-right) -->
+      <button
+        class="btn btn-sm btn-link p-0 favorite-heart"
+        :title="favorites.isFavorite(tutor.user_id) ? 'Remove from favourites' : 'Add to favourites'"
+        @click.prevent="toggleFav"
+      >
+        <i :class="favorites.isFavorite(tutor.user_id) ? 'bi bi-heart-fill text-danger' : 'bi bi-heart text-muted'"></i>
+      </button>
+
       <!-- Avatar + name -->
       <div class="d-flex align-items-center mb-2">
         <img
@@ -68,5 +88,13 @@ const defaultAvatar = 'https://i.pravatar.cc/150?img=1'
 <style scoped>
 .card-tutor .card-body {
   min-height: 280px;
+  position: relative;
+}
+.favorite-heart {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font-size: 1.2rem;
+  z-index: 2;
 }
 </style>

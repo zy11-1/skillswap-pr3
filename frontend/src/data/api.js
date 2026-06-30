@@ -182,6 +182,26 @@ async deleteAvailability(availabilityId) {
     return res.data
   },
 
+  // ---------- FAVORITES ----------
+  async getFavorites() {
+    const res = await http.get('/api/favorites')
+    return res.data
+  },
+
+  async getFavoriteIds() {
+    const res = await http.get('/api/favorites/ids')
+    return res.data
+  },
+
+  async toggleFavorite(tutorId) {
+    try {
+      const res = await http.post(`/api/favorites/${tutorId}`)
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
   // ---------- BOOKINGS ----------
   async getBookings(mode = 'learner') {
     const res = await http.get('/api/bookings', { params: { as: mode } })

@@ -2,6 +2,19 @@
 import { ref, computed, onMounted } from 'vue'
 import { api } from '@/data/api'
 import TutorCard from '@/components/tutor/TutorCard.vue'
+import { useFavoritesStore } from '@/stores/favorites'
+
+const favorites = useFavoritesStore()
+// Favourites panel: one card per favourited tutor, derived from the loaded
+// list so it updates instantly when a heart is toggled.
+const favoriteTutors = computed(() => {
+  const seen = new Set()
+  return tutors.value.filter((t) => {
+    if (!favorites.isFavorite(t.user_id) || seen.has(t.user_id)) return false
+    seen.add(t.user_id)
+    return true
+  })
+})
 
 const tutors = ref([])
 const skills = ref([])
@@ -40,6 +53,7 @@ async function loadData() {
     skills.value = skillsRes.data || []
     trending.value = trendingRes.data || []
     recommended.value = recommendedRes.data || []
+    await favorites.fetchIds()
   } catch (err) {
     error.value = 'Failed to load data. Please check that the backend is running.'
     console.error('Failed to load data:', err)
@@ -83,6 +97,17 @@ function resetFilters() {
     <div class="mb-4">
       <h3 class="fw-bold">Find a Tutor</h3>
       <p class="text-muted">Browse skills offered by your fellow students</p>
+    </div>
+
+    <!-- Favourite tutors (pinned) -->
+    <div v-if="!loading && favoriteTutors.length" class="mb-4">
+      <h6 class="fw-bold mb-2"><i class="bi bi-heart-fill text-danger me-1"></i>Your favourite tutors</h6>
+      <div class="row g-3">
+        <div v-for="tutor in favoriteTutors" :key="'fav-' + tutor.user_id" class="col-md-4">
+          <TutorCard :tutor="tutor" />
+        </div>
+      </div>
+      <hr class="my-4" />
     </div>
 
     <!-- Recommended for you (same faculty) -->

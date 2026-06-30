@@ -1,9 +1,7 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { api } from '@/data/api'
-import { useAuthStore } from '@/stores/auth'
 
-const auth = useAuthStore()
 const bookings = ref([])
 const loading = ref(true)
 const cursor = ref(new Date())          // any date within the displayed month
@@ -12,14 +10,20 @@ const selectedDay = ref(null)           // 'YYYY-MM-DD'
 async function load() {
   loading.value = true
   try {
-    const res = await api.getBookings(auth.activeMode)
-    bookings.value = (res.data || []).filter((b) => b.status !== 'Cancelled')
+    // One calendar always shows BOTH roles: sessions I teach and sessions
+    // I booked, tagged so they can be colour-coded (blue vs green).
+    const [learnerRes, tutorRes] = await Promise.all([
+      api.getBookings('learner'),
+      api.getBookings('tutor')
+    ])
+    const learner = (learnerRes.data || []).map((b) => ({ ...b, role: 'learner' }))
+    const tutor = (tutorRes.data || []).map((b) => ({ ...b, role: 'tutor' }))
+    bookings.value = [...learner, ...tutor].filter((b) => b.status !== 'Cancelled')
   } finally {
     loading.value = false
   }
 }
 onMounted(load)
-watch(() => auth.activeMode, load)
 
 const monthLabel = computed(() =>
   cursor.value.toLocaleDateString('en-MY', { month: 'long', year: 'numeric' })
@@ -89,7 +93,11 @@ const selectedSessions = computed(() => (selectedDay.value ? byDay.value[selecte
     <div class="d-flex justify-content-between align-items-center mb-3">
       <div>
         <h3 class="fw-bold mb-0">Calendar</h3>
-        <p class="text-muted mb-0 small">{{ auth.isTutorMode ? 'Sessions you teach' : 'Sessions you booked' }}</p>
+        <p class="text-muted mb-0 small">
+          Your full schedule —
+          <span class="badge cal-teach text-dark"><i class="bi bi-easel me-1"></i>Teaching</span>
+          <span class="badge cal-learn text-dark ms-1"><i class="bi bi-mortarboard me-1"></i>Learning</span>
+        </p>
       </div>
       <div class="btn-group btn-group-sm">
         <button class="btn btn-outline-secondary" @click="prevMonth"><i class="bi bi-chevron-left"></i></button>
@@ -118,9 +126,10 @@ const selectedSessions = computed(() => (selectedDay.value ? byDay.value[selecte
             <div class="small fw-semibold">{{ d.getDate() }}</div>
             <div
               v-for="b in sessionsOn(d).slice(0, 3)"
-              :key="b.booking_id"
+              :key="b.role + b.booking_id"
               class="cal-pill text-truncate"
-              :class="b.status === 'Completed' ? 'bg-success-subtle' : b.status === 'Pending' ? 'bg-warning-subtle' : 'bg-primary-subtle'"
+              :class="b.role === 'tutor' ? 'cal-teach' : 'cal-learn'"
+              :title="(b.role === 'tutor' ? 'Teaching: ' : 'Learning: ') + b.skill_name"
             >
               {{ timeOf(b) }} {{ b.skill_name }}
             </div>
@@ -134,10 +143,13 @@ const selectedSessions = computed(() => (selectedDay.value ? byDay.value[selecte
     <div v-if="selectedDay && selectedSessions.length" class="card border-0 shadow-sm mt-3">
       <div class="card-header bg-white fw-bold">{{ selectedDay }}</div>
       <div class="list-group list-group-flush">
-        <div v-for="b in selectedSessions" :key="b.booking_id" class="list-group-item d-flex justify-content-between">
+        <div v-for="b in selectedSessions" :key="b.role + b.booking_id" class="list-group-item d-flex justify-content-between align-items-center">
           <span>
+            <span class="badge me-2" :class="b.role === 'tutor' ? 'cal-teach text-dark' : 'cal-learn text-dark'">
+              {{ b.role === 'tutor' ? 'Teaching' : 'Learning' }}
+            </span>
             <strong>{{ timeOf(b) }}</strong> · {{ b.skill_name }}
-            <span class="text-muted small">· {{ auth.isTutorMode ? b.learner_name : b.tutor_name }}</span>
+            <span class="text-muted small">· {{ b.role === 'tutor' ? b.learner_name : b.tutor_name }}</span>
           </span>
           <span :class="`status-pill status-${b.status.toLowerCase()}`">{{ b.status }}</span>
         </div>
@@ -167,4 +179,7 @@ const selectedSessions = computed(() => (selectedDay.value ? byDay.value[selecte
   padding: 1px 4px;
   margin-top: 2px;
 }
+/* Fixed role colours, independent of the navbar mode theme. */
+.cal-teach { background: #d8eaff; color: #14529c; }   /* teaching = blue */
+.cal-learn { background: #d8f5e6; color: #15824b; }   /* learning = green */
 </style>

@@ -27,11 +27,13 @@ class MessageController
         // Pull every message involving me, newest first, then fold into
         // one row per counterpart in PHP (keeps the SQL simple and avoids
         // reusing named placeholders under EMULATE_PREPARES=false).
+        // Only human chat belongs in the conversation list; booking/system
+        // notifications live in the notification panel, not the chat threads.
         $stmt = $db->prepare(
-            'SELECT sender_id, receiver_id, body, sent_at
+            "SELECT sender_id, receiver_id, body, sent_at
              FROM Message
-             WHERE sender_id = :me1 OR receiver_id = :me2
-             ORDER BY sent_at DESC'
+             WHERE (sender_id = :me1 OR receiver_id = :me2) AND category = 'chat'
+             ORDER BY sent_at DESC"
         );
         $stmt->execute(['me1' => $me, 'me2' => $me]);
         $rows = $stmt->fetchAll();
@@ -74,17 +76,17 @@ class MessageController
         $db = Database::getConnection();
 
         $stmt = $db->prepare(
-            'SELECT message_id, sender_id, receiver_id, body, sent_at
+            "SELECT message_id, sender_id, receiver_id, body, sent_at
              FROM Message
-             WHERE (sender_id = :me1 AND receiver_id = :other1)
-                OR (sender_id = :other2 AND receiver_id = :me2)
-             ORDER BY sent_at ASC'
+             WHERE ((sender_id = :me1 AND receiver_id = :other1)
+                OR (sender_id = :other2 AND receiver_id = :me2)) AND category = 'chat'
+             ORDER BY sent_at ASC"
         );
         $stmt->execute(['me1' => $me, 'other1' => $other, 'other2' => $other, 'me2' => $me]);
         $messages = $stmt->fetchAll();
 
-        // Opening a thread marks the other person's messages to me as read.
-        $mark = $db->prepare("UPDATE Message SET is_read = 1 WHERE receiver_id = :me AND sender_id = :other AND is_read = 0");
+        // Opening a thread marks the other person's chat messages to me as read.
+        $mark = $db->prepare("UPDATE Message SET is_read = 1 WHERE receiver_id = :me AND sender_id = :other AND category = 'chat' AND is_read = 0");
         $mark->execute(['me' => $me, 'other' => $other]);
 
         return $this->json($response, ['data' => $messages], 200);
@@ -104,10 +106,10 @@ class MessageController
         $unread = (int) $stmt->fetchColumn();
 
         $stmt = $db->prepare(
-            'SELECT m.message_id, m.sender_id, m.body, m.is_read, m.sent_at, u.name AS sender_name
+            'SELECT m.message_id, m.sender_id, m.body, m.is_read, m.category, m.sent_at, u.name AS sender_name
              FROM Message m JOIN User u ON u.user_id = m.sender_id
              WHERE m.receiver_id = :me
-             ORDER BY m.sent_at DESC LIMIT 10'
+             ORDER BY m.sent_at DESC LIMIT 30'
         );
         $stmt->execute(['me' => $me]);
         $items = $stmt->fetchAll();
@@ -117,6 +119,31 @@ class MessageController
         unset($i);
 
         return $this->json($response, ['data' => ['unread_count' => $unread, 'items' => $items]], 200);
+    }
+
+    /**
+     * POST /api/notifications/read (requires JWT)
+     * Marks all of my notifications as read (clears the bell).
+     */
+    public function markAllRead(Request $request, Response $response): Response
+    {
+        $me = (int) $request->getAttribute('user_id');
+        $db = Database::getConnection();
+        $stmt = $db->prepare('UPDATE Message SET is_read = 1 WHERE receiver_id = :me AND is_read = 0');
+        $stmt->execute(['me' => $me]);
+        return $this->json($response, ['data' => ['ok' => true]], 200);
+    }
+
+    /**
+     * Helper other controllers use to drop a categorised notification into a
+     * user's bell (booking events, material updates, etc.).
+     */
+    public static function notify(\PDO $db, int $senderId, int $receiverId, string $body, string $category = 'booking'): void
+    {
+        $stmt = $db->prepare(
+            'INSERT INTO Message (sender_id, receiver_id, body, category) VALUES (:s, :r, :b, :c)'
+        );
+        $stmt->execute(['s' => $senderId, 'r' => $receiverId, 'b' => $body, 'c' => $category]);
     }
 
     /**

@@ -10,10 +10,11 @@ const auth = useAuthStore()
 
 const defaultAvatar = 'https://i.pravatar.cc/150?img=1'
 
-// ---- Notifications (bell) ----
+// ---- Notification center (bell) ----
 const notifOpen = ref(false)
 const unreadCount = ref(0)
 const notifItems = ref([])
+const notifFilter = ref('all')   // 'all' | 'chat' | 'booking'
 let notifTimer = null
 
 async function loadNotifications() {
@@ -31,18 +32,55 @@ async function loadNotifications() {
   }
 }
 
+const filteredNotifs = computed(() => {
+  if (notifFilter.value === 'all') return notifItems.value
+  return notifItems.value.filter((n) => (n.category || 'chat') === notifFilter.value)
+})
+
+function notifIcon(category) {
+  return {
+    chat: 'bi-chat-dots',
+    booking: 'bi-calendar-check',
+    system: 'bi-info-circle',
+    marketplace: 'bi-shop'
+  }[category] || 'bi-bell'
+}
+
 function toggleNotif() {
   notifOpen.value = !notifOpen.value
   if (notifOpen.value) loadNotifications()
 }
 
-function openMessages(item) {
+async function markAllRead() {
+  try {
+    await api.markNotificationsRead()
+    unreadCount.value = 0
+    notifItems.value = notifItems.value.map((n) => ({ ...n, is_read: 1 }))
+  } catch {
+    /* ignore */
+  }
+}
+
+// Clicking a notification routes by type: chat opens the thread; booking/
+// system/marketplace go to the relevant screen. Either way it's marked read.
+function openNotif(item) {
   notifOpen.value = false
-  // Open the relevant thread directly (the clicked item, or the latest).
-  const target = item || notifItems.value[0]
-  router.push(target
-    ? { name: 'messages', query: { to: target.sender_id, name: target.sender_name } }
-    : { name: 'messages' })
+  const category = item?.category || 'chat'
+  if (category === 'chat') {
+    router.push(item
+      ? { name: 'messages', query: { to: item.sender_id, name: item.sender_name } }
+      : { name: 'messages' })
+  } else if (category === 'marketplace') {
+    router.push('/marketplace')
+  } else {
+    router.push('/bookings') // booking & system → My Classes
+  }
+  markAllRead()
+}
+
+function openMessages() {
+  notifOpen.value = false
+  router.push('/messages')
 }
 
 onMounted(() => {
@@ -156,23 +194,42 @@ function handleLogout() {
               <div class="notif-panel card shadow">
                 <div class="card-header bg-white d-flex justify-content-between align-items-center py-2">
                   <span class="fw-bold small text-dark">Notifications</span>
-                  <button class="btn btn-sm btn-link p-0" @click="openMessages()">Open messages</button>
+                  <button class="btn btn-sm btn-link p-0" @click="markAllRead">Mark all read</button>
                 </div>
+
+                <!-- Filter tabs: All, Messages (chat), Bookings -->
+                <div class="btn-group btn-group-sm w-100 p-2 bg-white border-bottom" role="group">
+                  <button class="btn" :class="notifFilter === 'all' ? 'btn-primary' : 'btn-outline-secondary'" @click="notifFilter = 'all'">
+                    All
+                  </button>
+                  <button class="btn" :class="notifFilter === 'chat' ? 'btn-primary' : 'btn-outline-secondary'" @click="notifFilter = 'chat'" title="Class messages">
+                    <i class="bi bi-chat-dots"></i> Messages
+                  </button>
+                  <button class="btn" :class="notifFilter === 'booking' ? 'btn-primary' : 'btn-outline-secondary'" @click="notifFilter = 'booking'" title="Booking updates">
+                    <i class="bi bi-calendar-check"></i> Bookings
+                  </button>
+                </div>
+
                 <div class="notif-list">
                   <button
-                    v-for="n in notifItems"
+                    v-for="n in filteredNotifs"
                     :key="n.message_id"
-                    class="list-group-item list-group-item-action text-start border-0 border-bottom"
+                    class="list-group-item list-group-item-action text-start border-0 border-bottom d-flex gap-2"
                     :class="{ 'bg-light': !n.is_read }"
-                    @click="openMessages(n)"
+                    @click="openNotif(n)"
                   >
-                    <div class="small text-dark">
-                      <strong>{{ n.sender_name }}</strong>
-                      <span v-if="!n.is_read" class="badge bg-primary-ss ms-1">new</span>
-                    </div>
-                    <div class="small text-muted text-truncate">{{ n.body }}</div>
+                    <i :class="['bi', notifIcon(n.category), 'mt-1', n.category === 'booking' ? 'text-success' : n.category === 'chat' ? 'text-primary' : 'text-secondary']"></i>
+                    <span class="flex-grow-1 overflow-hidden">
+                      <span class="small text-dark">
+                        <strong>{{ n.sender_name }}</strong>
+                        <span v-if="!n.is_read" class="badge bg-primary-ss ms-1">new</span>
+                      </span>
+                      <span class="small text-muted d-block text-truncate">{{ n.body }}</span>
+                    </span>
                   </button>
-                  <p v-if="!notifItems.length" class="text-muted small p-3 mb-0">No notifications yet.</p>
+                  <p v-if="!filteredNotifs.length" class="text-muted small p-3 mb-0">
+                    {{ notifFilter === 'all' ? 'No notifications yet.' : `No ${notifFilter === 'chat' ? 'message' : notifFilter} notifications.` }}
+                  </p>
                 </div>
               </div>
             </template>

@@ -430,7 +430,7 @@ class TutorController
                     expires_at = DATE_ADD(NOW(), INTERVAL 12 HOUR)
              WHERE priority_id = :pid"
         );
-        $msg = $db->prepare('INSERT INTO Message (sender_id, receiver_id, body) VALUES (:tutor, :learner, :body)');
+        $msg = $db->prepare("INSERT INTO Message (sender_id, receiver_id, body, category) VALUES (:tutor, :learner, :body, 'booking')");
 
         foreach ($waiting as $w) {
             $update->execute(['sid' => $newSlotId, 'pid' => $w['priority_id']]);
@@ -511,6 +511,24 @@ class TutorController
             'id' => $availabilityId,
         ]);
 
+        // If the materials/details (resources, outcomes, link, location) changed
+        // on a slot that already has students, notify each of them.
+        $detailsChanged = $resources !== (string) ($slot['resources'] ?? '')
+            || $outcomes !== (string) ($slot['outcomes'] ?? '')
+            || $meetingLink !== (string) ($slot['meeting_link'] ?? '')
+            || $location !== (string) ($slot['location'] ?? '');
+        if ($detailsChanged) {
+            $when = $slot['available_date'] . ' ' . substr($slot['start_time'], 0, 5);
+            $stmt = $db->prepare("SELECT DISTINCT learner_id FROM Booking WHERE availability_id = :id AND status <> 'Cancelled'");
+            $stmt->execute(['id' => $availabilityId]);
+            foreach ($stmt->fetchAll() as $row) {
+                \App\Controllers\MessageController::notify(
+                    $db, $userId, (int) $row['learner_id'],
+                    "Your tutor updated the details/materials for your session on $when."
+                );
+            }
+        }
+
         return $this->json($response, ['data' => [
             'availability_id' => $availabilityId, 'capacity' => $capacity, 'mode' => $mode,
             'visibility' => $visibility, 'share_token' => $shareToken,
@@ -560,7 +578,7 @@ class TutorController
             $db->prepare("UPDATE Booking SET status = 'Cancelled' WHERE availability_id = :id AND status <> 'Cancelled'")
                ->execute(['id' => $availabilityId]);
 
-            $msg = $db->prepare('INSERT INTO Message (sender_id, receiver_id, body) VALUES (:tutor, :learner, :body)');
+            $msg = $db->prepare("INSERT INTO Message (sender_id, receiver_id, body, category) VALUES (:tutor, :learner, :body, 'booking')");
             $prio = $db->prepare(
                 "INSERT INTO SlotPriority (tutor_id, learner_id, origin_slot_id, status) VALUES (:tutor, :learner, :origin, 'Waiting')"
             );

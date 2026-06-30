@@ -254,6 +254,11 @@ async deleteAvailability(availabilityId) {
     return res.data
   },
 
+  async markNotificationsRead() {
+    const res = await http.post('/api/notifications/read')
+    return res.data
+  },
+
   // ---------- MESSAGES ----------
   async getConversations() {
     const res = await http.get('/api/messages')

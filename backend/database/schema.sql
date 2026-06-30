@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS Message (
     receiver_id  INT NOT NULL,
     body         TEXT NOT NULL,
     is_read      TINYINT(1) NOT NULL DEFAULT 0,
+    category     ENUM('chat', 'booking', 'system', 'marketplace') NOT NULL DEFAULT 'chat',
     sent_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_message_sender FOREIGN KEY (sender_id) REFERENCES User(user_id) ON DELETE CASCADE,
     CONSTRAINT fk_message_receiver FOREIGN KEY (receiver_id) REFERENCES User(user_id) ON DELETE CASCADE

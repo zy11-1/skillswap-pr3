@@ -264,6 +264,12 @@ class BookingController
             return $this->json($response, ['error' => 'Could not complete the booking.'], 500);
         }
 
+        // Let the tutor know a seat was taken (booking notification).
+        \App\Controllers\MessageController::notify(
+            $db, $learnerId, $tutorId,
+            'A student booked one of your sessions.'
+        );
+
         $booking = $this->fetchBookingById($db, $bookingId);
         $booking['auto_accepted'] = true;
         return $this->json($response, ['data' => $booking], 201);
@@ -354,6 +360,13 @@ class BookingController
             error_log('Booking status update failed: ' . $e->getMessage());
             return $this->json($response, ['error' => 'Could not update booking status.'], 500);
         }
+
+        // Notify the learner about the tutor's decision (booking notification).
+        $verb = ['Accepted' => 'accepted', 'Cancelled' => 'declined/cancelled', 'Completed' => 'marked completed'][$newStatus] ?? strtolower($newStatus);
+        \App\Controllers\MessageController::notify(
+            $db, (int) $booking['tutor_id'], (int) $booking['learner_id'],
+            "Your session booking was $verb by the tutor."
+        );
 
         $updated = $this->fetchBookingById($db, $bookingId);
         return $this->json($response, ['data' => $updated], 200);

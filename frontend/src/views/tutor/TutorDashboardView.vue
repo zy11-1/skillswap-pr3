@@ -1,12 +1,9 @@
 <script setup>
 import { onMounted, ref, computed } from 'vue'
-import { useBookingStore } from '@/stores/booking'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/data/api'
 
-const bookingStore = useBookingStore()
 const auth = useAuthStore()
-const updatingId = ref(null)
 
 // ---- Availability ----
 const availability = ref([])
@@ -303,52 +300,22 @@ async function removeSlot(id) {
 }
 
 onMounted(() => {
-  bookingStore.fetchAsTutor()
+  // Booking/session management lives in "My Classes" now; the dashboard is
+  // the setup hub (availability, skills, verification, merits).
   loadAvailability()
   loadSkills()
   loadVerification()
   loadMerits()
 })
-
-async function respond(bookingId, status) {
-  updatingId.value = bookingId
-  try {
-    await bookingStore.updateStatus(bookingId, status)
-  } finally {
-    updatingId.value = null
-  }
-}
-
-// ---- Recording vault ----
-const recordingDrafts = ref({})
-const savingRecording = ref(null)
-
-async function saveRecording(booking) {
-  const url = (recordingDrafts.value[booking.booking_id] ?? booking.recording_url ?? '').trim()
-  savingRecording.value = booking.booking_id
-  try {
-    await api.setBookingRecording(booking.booking_id, url)
-    await bookingStore.fetchAsTutor()
-  } catch (err) {
-    alert(err.message || 'Could not save recording link.')
-  } finally {
-    savingRecording.value = null
-  }
-}
-
-function statusClass(status) {
-  return `status-pill status-${status.toLowerCase()}`
-}
-
-function formatDate(dateStr) {
-  return new Date(dateStr).toLocaleString('en-MY', { dateStyle: 'medium', timeStyle: 'short' })
-}
 </script>
 
 <template>
   <div class="container py-4">
     <h3 class="fw-bold mb-1">Tutor Dashboard</h3>
-    <p class="text-muted">Manage your incoming session requests</p>
+    <p class="text-muted">
+      Set up your skills, availability and verification.
+      Manage booked sessions in <router-link to="/bookings">My Classes</router-link>.
+    </p>
 
     <!-- Not-visible warning: a tutor only appears in the marketplace once
          they list at least one skill (availability alone isn't enough). -->
@@ -360,78 +327,6 @@ function formatDate(dateStr) {
         to appear in the Marketplace and be searchable. Setting availability slots alone does
         <em>not</em> make you findable — students book a <em>skill</em>.
       </div>
-    </div>
-
-    <!-- Bookings -->
-    <div v-if="bookingStore.loadingTutor" class="text-center py-5">
-      <div class="spinner-border text-primary-ss"></div>
-    </div>
-
-    <div v-else-if="bookingStore.tutorBookings.length" class="row g-3 mb-4">
-      <div v-for="b in bookingStore.tutorBookings" :key="b.booking_id" class="col-md-6">
-        <div class="card border-0 shadow-sm h-100">
-          <div class="card-body">
-            <div class="d-flex justify-content-between align-items-start mb-2">
-              <h6 class="mb-0">{{ b.learner_name }}</h6>
-              <span :class="statusClass(b.status)">{{ b.status }}</span>
-            </div>
-            <p class="small text-muted mb-1">{{ b.skill_name }}</p>
-            <p class="small mb-1"><i class="bi bi-calendar3 me-1"></i>{{ formatDate(b.booking_date) }}</p>
-            <p class="small mb-3">
-              <i class="bi bi-clock me-1"></i>{{ b.duration }}h —
-              <span class="fw-semibold">RM{{ b.total_amount.toFixed(2) }}</span>
-            </p>
-
-            <div v-if="b.status === 'Pending'" class="d-flex gap-2">
-              <button
-                class="btn btn-success btn-sm flex-fill"
-                :disabled="updatingId === b.booking_id"
-                @click="respond(b.booking_id, 'Accepted')"
-              >
-                Accept
-              </button>
-              <button
-                class="btn btn-outline-danger btn-sm flex-fill"
-                :disabled="updatingId === b.booking_id"
-                @click="respond(b.booking_id, 'Cancelled')"
-              >
-                Decline
-              </button>
-            </div>
-
-            <button
-              v-else-if="b.status === 'Accepted'"
-              class="btn btn-primary btn-sm w-100"
-              :disabled="updatingId === b.booking_id"
-              @click="respond(b.booking_id, 'Completed')"
-            >
-              Mark as Completed
-            </button>
-
-            <!-- Recording vault: attach a session recording link -->
-            <div v-if="b.status === 'Completed'" class="mt-2">
-              <label class="form-label small mb-1"><i class="bi bi-camera-video me-1"></i>Session recording link</label>
-              <div class="input-group input-group-sm">
-                <input
-                  :value="recordingDrafts[b.booking_id] ?? b.recording_url ?? ''"
-                  type="url"
-                  class="form-control"
-                  placeholder="https://meet.google.com/..."
-                  @input="recordingDrafts[b.booking_id] = $event.target.value"
-                />
-                <button class="btn btn-outline-primary" :disabled="savingRecording === b.booking_id" @click="saveRecording(b)">
-                  {{ savingRecording === b.booking_id ? '...' : 'Save' }}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div v-else class="text-center py-3 text-muted">
-      <i class="bi bi-inbox" style="font-size: 2rem"></i>
-      <p class="mt-2">No booking requests yet.</p>
     </div>
 
     <!-- ============================================================ -->

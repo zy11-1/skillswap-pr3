@@ -91,6 +91,34 @@ async function deleteReview(b) {
   }
 }
 
+// ---- Dispute reporting ----
+const disputingId = ref(null)      // which booking has the form open
+const disputeReason = ref('')
+const submittingDispute = ref(null)
+
+function openDisputeForm(bookingId) {
+  disputingId.value = bookingId
+  disputeReason.value = ''
+}
+function cancelDispute() {
+  disputingId.value = null
+  disputeReason.value = ''
+}
+async function submitDispute(b) {
+  if (!disputeReason.value.trim()) return
+  submittingDispute.value = b.booking_id
+  try {
+    await api.submitDispute(b.booking_id, disputeReason.value.trim())
+    b.dispute_status = 'open'
+    disputingId.value = null
+    disputeReason.value = ''
+  } catch (err) {
+    alert(err.message || 'Could not submit dispute.')
+  } finally {
+    submittingDispute.value = null
+  }
+}
+
 function statusClass(status) {
   return `status-pill status-${status.toLowerCase()}`
 }
@@ -231,6 +259,43 @@ function formatDate(dateStr) {
                   </button>
                 </template>
                 <span v-else class="text-muted small">—</span>
+
+                <!-- Dispute reporting (learner, non-cancelled bookings only) -->
+                <template v-if="b.status !== 'Cancelled'">
+                  <div v-if="!b.dispute_status || b.dispute_status === 'none'">
+                    <div v-if="disputingId === b.booking_id" class="mt-2">
+                      <textarea
+                        v-model="disputeReason"
+                        class="form-control form-control-sm mb-1"
+                        rows="2"
+                        maxlength="500"
+                        placeholder="Briefly describe the issue (max 500 chars)"
+                      ></textarea>
+                      <div class="d-flex gap-1">
+                        <button
+                          class="btn btn-danger btn-sm"
+                          :disabled="!disputeReason.trim() || submittingDispute === b.booking_id"
+                          @click="submitDispute(b)"
+                        >
+                          {{ submittingDispute === b.booking_id ? 'Submitting…' : 'Submit' }}
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" @click="cancelDispute">Cancel</button>
+                      </div>
+                    </div>
+                    <button v-else class="btn btn-link btn-sm text-danger p-0 mt-1" @click="openDisputeForm(b.booking_id)">
+                      <i class="bi bi-flag me-1"></i>Report issue
+                    </button>
+                  </div>
+                  <span v-else-if="b.dispute_status === 'open'" class="badge bg-warning text-dark mt-1 d-block">
+                    <i class="bi bi-clock me-1"></i>Dispute pending review
+                  </span>
+                  <span v-else-if="b.dispute_status === 'resolved_refund'" class="badge bg-success mt-1 d-block">
+                    <i class="bi bi-check-circle me-1"></i>Resolved — refunded
+                  </span>
+                  <span v-else-if="b.dispute_status === 'resolved_closed'" class="badge bg-secondary mt-1 d-block">
+                    <i class="bi bi-x-circle me-1"></i>Dispute closed
+                  </span>
+                </template>
               </template>
             </td>
           </tr>

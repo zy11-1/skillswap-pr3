@@ -396,10 +396,28 @@ async deleteAvailability(availabilityId) {
     return res.data
   },
 
-  // ---------- ADMIN ----------
+  // ---------- ADMIN — users ----------
   async getAllUsers() {
     const res = await http.get('/api/admin/users')
     return res.data
+  },
+
+  async updateAdminUser(userId, data) {
+    try {
+      const res = await http.patch(`/api/admin/users/${userId}`, data)
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
+  async deleteAdminUser(userId) {
+    try {
+      const res = await http.delete(`/api/admin/users/${userId}`)
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
   },
 
   async getPendingVerifications() {
@@ -410,5 +428,56 @@ async deleteAvailability(availabilityId) {
   async verifyTutor(userId) {
     const res = await http.patch(`/api/admin/users/${userId}/verify`)
     return res.data
+  },
+
+  // ---------- ADMIN — content moderation ----------
+  async getAdminReviews() {
+    const res = await http.get('/api/admin/reviews')
+    return res.data
+  },
+
+  async deleteAdminReview(reviewId) {
+    try {
+      const res = await http.delete(`/api/admin/reviews/${reviewId}`)
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
+  // ---------- ADMIN — disputes ----------
+  async getAdminDisputes() {
+    const res = await http.get('/api/admin/disputes')
+    return res.data
+  },
+
+  async resolveDispute(bookingId, resolution) {
+    try {
+      const res = await http.patch(`/api/admin/disputes/${bookingId}`, { resolution })
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
+  // ---------- ADMIN — stats + bookings ----------
+  async getAdminStats() {
+    const res = await http.get('/api/admin/stats')
+    return res.data
+  },
+
+  async getAdminBookings() {
+    const res = await http.get('/api/admin/bookings')
+    return res.data
+  },
+
+  // ---------- DISPUTES (user side) ----------
+  async submitDispute(bookingId, reason) {
+    try {
+      const res = await http.post(`/api/bookings/${bookingId}/dispute`, { reason })
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
   }
 }

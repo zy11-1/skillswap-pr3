@@ -464,6 +464,52 @@ class BookingController
         return $this->json($response, ['data' => $this->fetchBookingById($db, $bookingId)], 200);
     }
 
+    /**
+     * POST /api/bookings/{id}/dispute (requires JWT, learner of the booking)
+     * Body: { reason: string }
+     * Raises a dispute flag so the admin can mediate.
+     */
+    public function submitDispute(Request $request, Response $response, array $args): Response
+    {
+        $bookingId = (int) $args['id'];
+        $userId    = (int) $request->getAttribute('user_id');
+        $data      = (array) $request->getParsedBody();
+        $reason    = trim((string) ($data['reason'] ?? ''));
+
+        if ($reason === '') {
+            return $this->json($response, ['error' => 'A reason is required to raise a dispute.'], 422);
+        }
+        if (mb_strlen($reason) > 500) {
+            return $this->json($response, ['error' => 'Reason must be 500 characters or fewer.'], 422);
+        }
+
+        $db      = Database::getConnection();
+        $booking = $this->fetchBookingById($db, $bookingId);
+
+        if (!$booking) {
+            return $this->json($response, ['error' => 'Booking not found.'], 404);
+        }
+        if ((int) $booking['learner_id'] !== $userId) {
+            return $this->json($response, ['error' => 'You can only dispute your own bookings.'], 403);
+        }
+        if ($booking['status'] === 'Cancelled') {
+            return $this->json($response, ['error' => 'Cancelled bookings cannot be disputed.'], 422);
+        }
+        if (($booking['dispute_status'] ?? 'none') !== 'none') {
+            return $this->json($response, ['error' => 'A dispute has already been raised for this booking.'], 409);
+        }
+
+        $stmt = $db->prepare("UPDATE Booking SET dispute_reason = :reason, dispute_status = 'open' WHERE booking_id = :id");
+        $stmt->execute(['reason' => $reason, 'id' => $bookingId]);
+
+        \App\Controllers\MessageController::notify(
+            $db, $userId, (int) $booking['tutor_id'],
+            'A dispute has been raised for one of your sessions. An admin will review and get back to you.'
+        );
+
+        return $this->json($response, ['data' => ['booking_id' => $bookingId, 'dispute_status' => 'open']], 200);
+    }
+
     private function fetchBookingById(\PDO $db, int $id): ?array
     {
         $stmt = $db->prepare('SELECT * FROM Booking WHERE booking_id = :id');

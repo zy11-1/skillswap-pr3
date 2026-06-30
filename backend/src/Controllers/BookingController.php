@@ -421,8 +421,18 @@ class BookingController
             return $this->json($response, ['error' => 'You can only attach a recording to a Completed session.'], 422);
         }
 
+        $wasEmpty = empty($booking['recording_url']);
         $stmt = $db->prepare('UPDATE Booking SET recording_url = :url WHERE booking_id = :id');
         $stmt->execute(['url' => $url === '' ? null : $url, 'id' => $bookingId]);
+
+        // Notify the learner when a recording link is newly added — it lands
+        // in their bell and "Watch recording" appears on the booking.
+        if ($url !== '' && $wasEmpty) {
+            \App\Controllers\MessageController::notify(
+                $db, $userId, (int) $booking['learner_id'],
+                'A session recording is now available — watch it from My Classes.'
+            );
+        }
 
         return $this->json($response, ['data' => $this->fetchBookingById($db, $bookingId)], 200);
     }

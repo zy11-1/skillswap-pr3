@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS User (
     password_hash   VARCHAR(255) NOT NULL,
     role            ENUM('learner', 'tutor', 'admin') NOT NULL DEFAULT 'learner',
     faculty         VARCHAR(100) NOT NULL,
+    year_of_study   VARCHAR(20) NULL,
     photo_url       VARCHAR(255) NULL,
     bio             TEXT NULL,
     wallet_balance  DECIMAL(10,2) NOT NULL DEFAULT 0.00,

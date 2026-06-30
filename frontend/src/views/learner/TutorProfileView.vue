@@ -69,7 +69,9 @@ function handleBooked() {
               {{ tutor.name }}
               <i v-if="tutor.is_verified" class="bi bi-patch-check-fill text-success"></i>
             </h5>
-            <p class="text-muted small">{{ tutor.faculty }}</p>
+            <p class="text-muted small">
+              {{ tutor.faculty }}<template v-if="tutor.year_of_study"> · {{ tutor.year_of_study }}</template>
+            </p>
             <p class="small">{{ tutor.bio }}</p>
             <router-link
               :to="{ name: 'messages', query: { to: tutor.user_id, name: tutor.name } }"

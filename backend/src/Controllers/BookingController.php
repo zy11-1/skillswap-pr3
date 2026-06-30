@@ -339,6 +339,7 @@ class BookingController
             ], 422);
         }
 
+        $refunded = false;
         $db->beginTransaction();
         try {
             $stmt = $db->prepare('UPDATE Booking SET status = :status WHERE booking_id = :id');
@@ -383,6 +384,7 @@ class BookingController
                 $updateBalance->execute(['amount' => $amount, 'id' => $booking['learner_id']]);
                 $insertTxn->execute(['user_id' => $booking['learner_id'], 'amount' => $amount, 'type' => 'Credit', 'booking_id' => $bookingId]);
                 $db->prepare('UPDATE Booking SET is_paid = 0 WHERE booking_id = :id')->execute(['id' => $bookingId]);
+                $refunded = true;
             }
 
             $db->commit();
@@ -397,6 +399,7 @@ class BookingController
         \App\Controllers\MessageController::notify(
             $db, (int) $booking['tutor_id'], (int) $booking['learner_id'],
             "Your session booking was $verb by the tutor."
+            . ($refunded ? ' Your prepayment of RM' . number_format((float) $booking['total_amount'], 2) . ' has been refunded to your wallet.' : '')
         );
 
         // After a session completes, schedule a review reminder for ~1 day

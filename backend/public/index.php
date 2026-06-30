@@ -26,9 +26,13 @@ $routes($app);
 // ============================================================
 $app->addRoutingMiddleware();
 $app->addBodyParsingMiddleware();
-$app->add(new CorsMiddleware($appConfig['cors_origin']));
 
 $displayErrorDetails = ($_ENV['APP_ENV'] ?? 'production') === 'development';
 $app->addErrorMiddleware($displayErrorDetails, true, true);
+
+// CORS is added LAST so it is the outermost middleware. This way it also wraps
+// the error handler — error responses (e.g. a 500) still get CORS headers, so the
+// browser shows the real error instead of a misleading "blocked by CORS" message.
+$app->add(new CorsMiddleware($appConfig['cors_origin']));
 
 $app->run();

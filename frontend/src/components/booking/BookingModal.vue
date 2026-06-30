@@ -130,6 +130,9 @@ onMounted(loadSlots)
                   <span class="ms-1" :class="slot.mode === 'Online' ? 'text-primary' : 'text-success'">
                     · <i :class="slot.mode === 'Online' ? 'bi bi-camera-video' : 'bi bi-geo-alt'"></i> {{ slot.mode }}
                   </span>
+                  <span v-if="slot.i_have_priority" class="badge bg-warning text-dark ms-1">
+                    <i class="bi bi-star-fill me-1"></i>Reserved for you
+                  </span>
                 </span>
                 <span v-if="slot.mode === 'Physical' && slot.location" class="small d-block text-muted">
                   <i class="bi bi-geo-alt me-1"></i>{{ slot.location }}

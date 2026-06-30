@@ -209,10 +209,14 @@ class TutorController
     public function getAvailability(Request $request, Response $response, array $args): Response
     {
         $tutorId = (int) $args['id'];
+        // Who's looking? (optional — this route allows public browsing).
+        // A priority holder must see THEIR reserved seat as available.
+        $viewerId = $this->optionalViewerId($request);
         $db = Database::getConnection();
 
-        // Per slot: active bookings (seats_taken) and seats currently held
-        // for priority students whose 12h window hasn't expired (reserved).
+        // Per slot: active bookings (seats_taken); seats reserved for OTHER
+        // priority holders (whose 12h window is still open); and whether the
+        // current viewer is themselves a priority holder for this slot.
         $stmt = $db->prepare(
             "SELECT ta.availability_id, ta.tutor_id, ta.available_date, ta.start_time, ta.end_time, ta.capacity,
                     ta.mode, ta.meeting_link, ta.location, ta.resources, ta.outcomes, ta.status,
@@ -220,23 +224,28 @@ class TutorController
                      WHERE b.availability_id = ta.availability_id AND b.status <> 'Cancelled') AS seats_taken,
                     (SELECT COUNT(*) FROM SlotPriority sp
                      WHERE sp.new_slot_id = ta.availability_id AND sp.status = 'Offered'
-                       AND sp.expires_at > NOW()) AS reserved
+                       AND sp.expires_at > NOW() AND sp.learner_id <> :viewer_others) AS reserved_others,
+                    (SELECT COUNT(*) FROM SlotPriority sp2
+                     WHERE sp2.new_slot_id = ta.availability_id AND sp2.status = 'Offered'
+                       AND sp2.expires_at > NOW() AND sp2.learner_id = :viewer_me) AS i_have_priority
              FROM TutorAvailability ta
              WHERE ta.tutor_id = :tutor_id AND ta.available_date >= CURDATE() AND ta.status = 'Active'
              ORDER BY ta.available_date, ta.start_time"
         );
-        $stmt->execute(['tutor_id' => $tutorId]);
+        $stmt->execute(['tutor_id' => $tutorId, 'viewer_others' => $viewerId, 'viewer_me' => $viewerId]);
         $slots = $stmt->fetchAll();
 
         foreach ($slots as &$slot) {
             $slot['capacity'] = (int) $slot['capacity'];
             $slot['seats_taken'] = (int) $slot['seats_taken'];
-            $slot['reserved'] = (int) $slot['reserved'];
-            // Seats a non-priority student can grab = capacity minus those
-            // already booked minus seats still reserved for priority holders.
+            $slot['reserved'] = (int) $slot['reserved_others'];
+            $slot['i_have_priority'] = ((int) $slot['i_have_priority']) > 0;
+            // A non-priority viewer can't touch seats reserved for others.
+            // A priority holder ignores their own reservation (it IS their seat).
             $slot['seats_left'] = max(0, $slot['capacity'] - $slot['seats_taken'] - $slot['reserved']);
             $slot['type'] = $slot['capacity'] > 1 ? 'Group' : 'Solo';
             $slot['is_full'] = $slot['seats_left'] <= 0;
+            unset($slot['reserved_others']);
         }
         unset($slot);
 
@@ -639,6 +648,26 @@ class TutorController
         $stmt->execute(['id' => $userSkillId]);
 
         return $this->json($response, ['data' => ['deleted' => true]], 200);
+    }
+
+    /**
+     * Decode the JWT if the request carries one, returning the user id, or
+     * 0 when absent/invalid. Used by public routes that still want to know
+     * who's looking (e.g. so a priority holder sees their reserved seat).
+     */
+    private function optionalViewerId(Request $request): int
+    {
+        $header = $request->getHeaderLine('Authorization');
+        if (!str_starts_with($header, 'Bearer ')) {
+            return 0;
+        }
+        try {
+            $appConfig = require __DIR__ . '/../../config/app.php';
+            $claims = \App\Utils\Jwt::decode(substr($header, 7), $appConfig['jwt_secret']);
+            return (int) ($claims['user_id'] ?? 0);
+        } catch (\Throwable $e) {
+            return 0;
+        }
     }
 
     private function json(Response $response, array $data, int $status): Response

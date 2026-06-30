@@ -134,12 +134,12 @@ function handleLogout() {
       </button>
       <div class="collapse navbar-collapse" id="navMenu">
         <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-          <!-- Mode-relevant primary links only -->
-          <li v-if="!auth.isAdmin && auth.isLearnerMode" class="nav-item">
-            <router-link class="nav-link" to="/marketplace">Marketplace</router-link>
-          </li>
+          <!-- My Classes is the first item in BOTH modes for consistency. -->
           <li v-if="!auth.isAdmin" class="nav-item">
             <router-link class="nav-link" to="/bookings">My Classes</router-link>
+          </li>
+          <li v-if="!auth.isAdmin && auth.isLearnerMode" class="nav-item">
+            <router-link class="nav-link" to="/marketplace">Marketplace</router-link>
           </li>
           <li v-if="!auth.isAdmin && auth.isTutorMode" class="nav-item">
             <router-link class="nav-link" to="/tutor-dashboard">Tutor Dashboard</router-link>
@@ -170,10 +170,8 @@ function handleLogout() {
         </div>
 
         <div class="d-flex align-items-center text-white">
-          <!-- Always-available utilities as icons -->
-          <router-link to="/messages" class="btn btn-sm btn-outline-light me-2" title="Messages" aria-label="Messages">
-            <i class="bi bi-chat-dots"></i>
-          </router-link>
+          <!-- Wallet stays as an icon; messages are reached via the bell
+               (notification center) to avoid a redundant top-bar icon. -->
           <router-link to="/wallet" class="btn btn-sm btn-outline-light me-2" title="Wallet" aria-label="Wallet">
             <i class="bi bi-wallet2"></i>
           </router-link>
@@ -230,6 +228,11 @@ function handleLogout() {
                   <p v-if="!filteredNotifs.length" class="text-muted small p-3 mb-0">
                     {{ notifFilter === 'all' ? 'No notifications yet.' : `No ${notifFilter === 'chat' ? 'message' : notifFilter} notifications.` }}
                   </p>
+                </div>
+                <div class="card-footer bg-white text-center py-2">
+                  <button class="btn btn-sm btn-link p-0" @click="openMessages">
+                    <i class="bi bi-chat-dots me-1"></i>See all messages
+                  </button>
                 </div>
               </div>
             </template>

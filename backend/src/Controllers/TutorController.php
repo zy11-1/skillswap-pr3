@@ -128,7 +128,7 @@ class TutorController
         $db = Database::getConnection();
 
         $stmt = $db->prepare(
-            'SELECT user_id, name, faculty, photo_url, bio, is_verified
+            'SELECT user_id, name, faculty, year_of_study, photo_url, bio, is_verified
              FROM User WHERE user_id = :id AND role <> \'admin\''
         );
         $stmt->execute(['id' => $tutorId]);

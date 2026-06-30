@@ -36,6 +36,7 @@ class AuthController
         // ability is just having skill offerings; admin is created manually.
         $role = 'learner';
         $faculty = trim((string) ($data['faculty'] ?? ''));
+        $yearOfStudy = trim((string) ($data['year_of_study'] ?? ''));
         $photoUrl = trim((string) ($data['photo_url'] ?? ''));
 
         if ($name === '') {
@@ -67,8 +68,8 @@ class AuthController
         $passwordHash = password_hash($password, PASSWORD_BCRYPT);
 
         $stmt = $db->prepare(
-            'INSERT INTO User (name, email, password_hash, role, faculty, photo_url, wallet_balance, is_verified)
-             VALUES (:name, :email, :password_hash, :role, :faculty, :photo_url, 0.00, 0)'
+            'INSERT INTO User (name, email, password_hash, role, faculty, year_of_study, photo_url, wallet_balance, is_verified)
+             VALUES (:name, :email, :password_hash, :role, :faculty, :year_of_study, :photo_url, 0.00, 0)'
         );
         $stmt->execute([
             'name' => $name,
@@ -76,6 +77,7 @@ class AuthController
             'password_hash' => $passwordHash,
             'role' => $role,
             'faculty' => $faculty,
+            'year_of_study' => $yearOfStudy ?: null,
             'photo_url' => $photoUrl ?: null,
         ]);
 
@@ -136,7 +138,7 @@ class AuthController
 
     private function fetchUserById(\PDO $db, int $userId): ?array
     {
-        $stmt = $db->prepare('SELECT user_id, name, email, role, faculty, photo_url, bio, wallet_balance, is_verified, created_at FROM User WHERE user_id = :id');
+        $stmt = $db->prepare('SELECT user_id, name, email, role, faculty, year_of_study, photo_url, bio, wallet_balance, is_verified, created_at FROM User WHERE user_id = :id');
         $stmt->execute(['id' => $userId]);
         $user = $stmt->fetch();
         return $user ?: null;

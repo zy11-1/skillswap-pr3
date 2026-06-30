@@ -12,8 +12,11 @@ const form = ref({
   password: '',
   confirmPassword: '',
   faculty: '',
+  year_of_study: '',
   photo_url: 'https://i.pravatar.cc/150?img=1'
 })
+
+const years = ['Year 1', 'Year 2', 'Year 3', 'Year 4', 'Postgraduate']
 
 const avatarOptions = [
   'https://i.pravatar.cc/150?img=1',
@@ -59,6 +62,7 @@ async function handleSubmit() {
       email: form.value.email,
       password: form.value.password,
       faculty: form.value.faculty,
+      year_of_study: form.value.year_of_study,
       photo_url: form.value.photo_url
     })
     router.push('/marketplace')
@@ -99,12 +103,21 @@ async function handleSubmit() {
             />
           </div>
 
-          <div class="mb-3">
-            <label class="form-label">Faculty</label>
-            <select v-model="form.faculty" class="form-select" required>
-              <option value="" disabled>Select your faculty</option>
-              <option v-for="f in faculties" :key="f" :value="f">{{ f }}</option>
-            </select>
+          <div class="row">
+            <div class="col-7 mb-3">
+              <label class="form-label">Faculty</label>
+              <select v-model="form.faculty" class="form-select" required>
+                <option value="" disabled>Select your faculty</option>
+                <option v-for="f in faculties" :key="f" :value="f">{{ f }}</option>
+              </select>
+            </div>
+            <div class="col-5 mb-3">
+              <label class="form-label">Year</label>
+              <select v-model="form.year_of_study" class="form-select">
+                <option value="">—</option>
+                <option v-for="y in years" :key="y" :value="y">{{ y }}</option>
+              </select>
+            </div>
           </div>
 
           <div class="alert alert-light border small mb-3">

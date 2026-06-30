@@ -25,8 +25,6 @@ const deletingUserId   = ref(null)
 const deletingReviewId = ref(null)
 const resolvingId      = ref(null)
 
-// ── role-edit state ───────────────────────────────────────────────────────────
-const roleEditing = ref({})   // { [userId]: selectedRole }
 
 // ── data loading ──────────────────────────────────────────────────────────────
 async function loadData() {
@@ -54,9 +52,7 @@ async function loadData() {
     if (disputesRes.status  === 'fulfilled') disputes.value      = disputesRes.value.data
     if (bookingsRes.status  === 'fulfilled') allBookings.value   = bookingsRes.value.data
 
-    // seed role editor with current values
-    roleEditing.value = {}
-    allUsers.value.forEach(u => { roleEditing.value[u.user_id] = u.role })
+
   } finally {
     loading.value = false
   }
@@ -125,24 +121,6 @@ async function toggleSuspend(user) {
   }
 }
 
-async function saveRole(user) {
-  const newRole = roleEditing.value[user.user_id]
-  if (newRole === user.role) return
-  if (!confirm(`Change ${user.name}'s role to "${newRole}"?`)) {
-    roleEditing.value[user.user_id] = user.role   // revert dropdown
-    return
-  }
-  updatingUserId.value = user.user_id
-  try {
-    await api.updateAdminUser(user.user_id, { role: newRole })
-    user.role = newRole
-  } catch (err) {
-    alert(err.message || 'Could not update role.')
-    roleEditing.value[user.user_id] = user.role   // revert on error
-  } finally {
-    updatingUserId.value = null
-  }
-}
 
 async function deleteUser(user) {
   if (!confirm(`Permanently delete "${user.name}"? This removes all their data and cannot be undone.`)) return
@@ -319,24 +297,9 @@ async function resolveDispute(bookingId, resolution) {
                   <td class="small text-muted">{{ u.email }}</td>
                   <td class="small">{{ u.faculty }}</td>
                   <td>
-                    <template v-if="u.role === 'admin'">
-                      <span class="badge bg-dark">admin</span>
-                    </template>
-                    <template v-else>
-                      <div class="d-flex align-items-center gap-1">
-                        <select
-                          v-model="roleEditing[u.user_id]"
-                          class="form-select form-select-sm"
-                          style="width: auto"
-                          :disabled="updatingUserId === u.user_id"
-                          @change="saveRole(u)"
-                        >
-                          <option value="learner">learner</option>
-                          <option value="tutor">tutor</option>
-                        </select>
-                        <span v-if="updatingUserId === u.user_id" class="spinner-border spinner-border-sm text-secondary"></span>
-                      </div>
-                    </template>
+                    <span class="badge" :class="u.role === 'admin' ? 'bg-dark' : u.role === 'tutor' ? 'bg-primary' : 'bg-secondary'">
+                      {{ u.role }}
+                    </span>
                   </td>
                   <td>
                     <i v-if="u.is_verified" class="bi bi-check-circle-fill text-success"></i>

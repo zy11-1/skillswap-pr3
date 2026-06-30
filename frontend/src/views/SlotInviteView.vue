@@ -133,6 +133,12 @@ async function reserve() {
               <span class="fw-bold text-primary-ss">RM{{ price }}</span>
             </div>
 
+            <div v-if="slot.payment_timing === 'prepay'" class="alert alert-warning py-2 small">
+              <i class="bi bi-wallet2 me-1"></i>
+              Prepay session — <strong>RM{{ price }}</strong> will be deducted from your wallet on booking
+              (refunded if the tutor declines).
+            </div>
+
             <button class="btn btn-primary w-100" :disabled="booking || !slot.offerings.length" @click="reserve">
               <span v-if="booking" class="spinner-border spinner-border-sm me-2"></span>
               {{ auth.isLoggedIn ? (booking ? 'Booking…' : 'Reserve my seat') : 'Log in to reserve' }}

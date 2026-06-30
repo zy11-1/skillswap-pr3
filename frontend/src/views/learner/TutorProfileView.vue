@@ -115,7 +115,7 @@ function handleBooked() {
                   <span class="badge bg-light text-dark border ms-1">{{ offering.level }}</span>
                 </h6>
                 <p class="small text-muted mb-0">{{ offering.description }}</p>
-                <span class="fw-bold text-primary-ss">RM{{ offering.hourly_rate.toFixed(2) }}/hr</span>
+                <span class="fw-bold text-primary-ss">RM{{ Number(offering.hourly_rate).toFixed(2) }}/hr</span>
               </div>
               <button class="btn btn-primary btn-sm" @click="openBooking(offering)">
                 Book

@@ -65,7 +65,7 @@ async function toggleFav() {
       <!-- Price and rating -->
       <div class="d-flex justify-content-between align-items-center mt-auto">
         <div>
-          <span class="fw-bold text-primary-ss">RM{{ tutor.hourly_rate.toFixed(2) }}</span>
+          <span class="fw-bold text-primary-ss">RM{{ Number(tutor.hourly_rate).toFixed(2) }}</span>
           <span class="text-muted small">/hr</span>
         </div>
         <div v-if="tutor.avg_rating" class="small">

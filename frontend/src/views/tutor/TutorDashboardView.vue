@@ -503,7 +503,7 @@ onMounted(() => {
             <div>
               <strong>{{ s.skill_name }}</strong>
               <span class="badge bg-white text-dark border ms-1">{{ s.level }}</span>
-              <span class="text-primary-ss fw-semibold ms-2">RM{{ s.hourly_rate.toFixed(2) }}/hr</span>
+              <span class="text-primary-ss fw-semibold ms-2">RM{{ Number(s.hourly_rate).toFixed(2) }}/hr</span>
               <div class="small text-muted">{{ s.description }}</div>
             </div>
             <button class="btn btn-sm btn-outline-danger" @click="removeOffering(s.userskill_id)">

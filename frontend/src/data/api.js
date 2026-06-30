@@ -317,30 +317,6 @@ async deleteAvailability(availabilityId) {
     }
   },
 
-  // ---------- GROUP CLASSES ----------
-  async getGroupClasses() {
-    const res = await http.get('/api/group-classes')
-    return res.data
-  },
-
-  async createGroupClass(payload) {
-    try {
-      const res = await http.post('/api/group-classes', payload)
-      return res.data
-    } catch (err) {
-      throw unwrapError(err)
-    }
-  },
-
-  async enrollGroupClass(classId) {
-    try {
-      const res = await http.post(`/api/group-classes/${classId}/enroll`)
-      return res.data
-    } catch (err) {
-      throw unwrapError(err)
-    }
-  },
-
   // ---------- MERITS (performance-based) ----------
   async getMeritStanding() {
     const res = await http.get('/api/merits/standing')

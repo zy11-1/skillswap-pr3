@@ -53,12 +53,6 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
-    path: '/group-classes',
-    name: 'group-classes',
-    component: () => import('@/views/GroupClassesView.vue'),
-    meta: { requiresAuth: true }
-  },
-  {
     path: '/slot/:token',
     name: 'slot-invite',
     component: () => import('@/views/SlotInviteView.vue')

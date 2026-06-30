@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useBookingStore } from '@/stores/booking'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/data/api'
@@ -26,6 +26,20 @@ onMounted(load)
 
 // Re-fetch the right list whenever the user switches hat while on this page.
 watch(() => auth.activeMode, load)
+
+// Refresh when the tab regains focus, so e.g. a tutor who books elsewhere and
+// comes back sees the new request without a manual reload.
+function refreshOnFocus() {
+  if (document.visibilityState === 'visible') load()
+}
+onMounted(() => {
+  window.addEventListener('focus', refreshOnFocus)
+  document.addEventListener('visibilitychange', refreshOnFocus)
+})
+onUnmounted(() => {
+  window.removeEventListener('focus', refreshOnFocus)
+  document.removeEventListener('visibilitychange', refreshOnFocus)
+})
 
 const filteredBookings = computed(() => {
   if (statusFilter.value === 'All') return list.value
@@ -188,7 +202,7 @@ function formatDate(dateStr) {
               </button>
             </td>
             <td>{{ b.duration }}h</td>
-            <td>RM{{ b.total_amount.toFixed(2) }}</td>
+            <td>RM{{ Number(b.total_amount).toFixed(2) }}</td>
             <td>
               <span :class="statusClass(b.status)">{{ b.status }}</span>
               <a

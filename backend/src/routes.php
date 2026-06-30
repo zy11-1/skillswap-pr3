@@ -5,7 +5,6 @@ use App\Controllers\AdminController;
 use App\Controllers\AuthController;
 use App\Controllers\BookingController;
 use App\Controllers\FavoriteController;
-use App\Controllers\GroupClassController;
 use App\Controllers\MeritController;
 use App\Controllers\MessageController;
 use App\Controllers\ReviewController;
@@ -124,15 +123,6 @@ $app->delete('/api/tutor/availability/{id}', [TutorController::class, 'deleteAva
     $app->group('/api/verification', function ($group) {
         $group->post('', [VerificationController::class, 'submit']);
         $group->get('/me', [VerificationController::class, 'myStatus']);
-    })->add($jwtMiddleware);
-
-    // ---------------------------------------------------------------
-    // Group classes (one tutor, many learners)
-    // ---------------------------------------------------------------
-    $app->group('/api/group-classes', function ($group) {
-        $group->get('', [GroupClassController::class, 'index']);
-        $group->post('', [GroupClassController::class, 'create']);
-        $group->post('/{id}/enroll', [GroupClassController::class, 'enroll']);
     })->add($jwtMiddleware);
 
     // ---------------------------------------------------------------

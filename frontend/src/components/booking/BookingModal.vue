@@ -130,7 +130,7 @@ onMounted(loadSlots)
                   {{ formatDate(slot.available_date) }} · {{ slot.start_time.slice(0,5) }}–{{ slot.end_time.slice(0,5) }}
                 </span>
                 <span class="text-end">
-                  <span class="fw-bold text-primary-ss">RM{{ slot.next_price.toFixed(2) }}</span>
+                  <span class="fw-bold text-primary-ss">RM{{ Number(slot.next_price).toFixed(2) }}</span>
                   <span class="d-block text-muted" style="font-size:.65rem">price drops as it fills</span>
                 </span>
               </div>
@@ -186,7 +186,7 @@ onMounted(loadSlots)
           <!-- Prepay confirmation -->
           <div v-if="confirming && selectedSlot" class="alert alert-warning py-2 small">
             <i class="bi bi-wallet2 me-1"></i>
-            <strong>RM{{ selectedSlot.next_price.toFixed(2) }}</strong> will be deducted from your wallet now
+            <strong>RM{{ Number(selectedSlot.next_price).toFixed(2) }}</strong> will be deducted from your wallet now
             (refunded if the tutor declines, and partly refunded if the class fills up).
           </div>
 
@@ -198,8 +198,8 @@ onMounted(loadSlots)
           >
             <span v-if="submitting" class="spinner-border spinner-border-sm me-2"></span>
             <template v-if="submitting">Booking…</template>
-            <template v-else-if="confirming && selectedSlot">Confirm &amp; pay RM{{ selectedSlot.next_price.toFixed(2) }}</template>
-            <template v-else-if="selectedSlot">Book — pay RM{{ selectedSlot.next_price.toFixed(2) }} now</template>
+            <template v-else-if="confirming && selectedSlot">Confirm &amp; pay RM{{ Number(selectedSlot.next_price).toFixed(2) }}</template>
+            <template v-else-if="selectedSlot">Book — pay RM{{ Number(selectedSlot.next_price).toFixed(2) }} now</template>
             <template v-else>Choose a session</template>
           </button>
           <button v-if="confirming" type="button" class="btn btn-link btn-sm w-100" @click="confirming = false">

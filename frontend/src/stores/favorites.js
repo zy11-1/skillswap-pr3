@@ -20,13 +20,30 @@ export const useFavoritesStore = defineStore('favorites', {
     },
     async toggle(tutorId) {
       const id = Number(tutorId)
-      const res = await api.toggleFavorite(id)
-      if (res.data.favorited) {
-        if (!this.ids.includes(id)) this.ids.push(id)
-      } else {
+      // Optimistic: flip the heart immediately so the UI feels instant,
+      // then reconcile with the server (rolling back if the call fails).
+      const wasFavorite = this.ids.includes(id)
+      if (wasFavorite) {
         this.ids = this.ids.filter((x) => x !== id)
+      } else {
+        this.ids.push(id)
       }
-      return res.data.favorited
+      try {
+        const res = await api.toggleFavorite(id)
+        // Reconcile with the server's authoritative result.
+        if (res.data.favorited) {
+          if (!this.ids.includes(id)) this.ids.push(id)
+        } else {
+          this.ids = this.ids.filter((x) => x !== id)
+        }
+        return res.data.favorited
+      } catch (err) {
+        // Roll back to the pre-click state and let the caller surface the error.
+        this.ids = wasFavorite
+          ? [...this.ids.filter((x) => x !== id), id]
+          : this.ids.filter((x) => x !== id)
+        throw err
+      }
     }
   }
 })

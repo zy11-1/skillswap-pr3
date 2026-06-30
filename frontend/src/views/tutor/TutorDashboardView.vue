@@ -19,7 +19,8 @@ function blankSlot() {
     location: '',
     resources: '',
     outcomes: '',
-    visibility: 'Public'  // 'Public' (browsable) or 'Private' (invite link only)
+    visibility: 'Public', // 'Public' (browsable) or 'Private' (invite link only)
+    auto_accept: true     // instant confirm vs manual approval
   }
 }
 
@@ -202,7 +203,8 @@ async function addSlot() {
       location: newSlot.value.location,
       resources: newSlot.value.resources,
       outcomes: newSlot.value.outcomes,
-      visibility: newSlot.value.visibility
+      visibility: newSlot.value.visibility,
+      auto_accept: newSlot.value.auto_accept ? 1 : 0
     })
     // Reload so the new slot shows its capacity/seats from the server.
     await loadAvailability()
@@ -225,7 +227,8 @@ function startEdit(slot) {
     location: slot.location || '',
     resources: slot.resources || '',
     outcomes: slot.outcomes || '',
-    visibility: slot.visibility || 'Public'
+    visibility: slot.visibility || 'Public',
+    auto_accept: slot.auto_accept !== false
   }
 }
 
@@ -248,7 +251,8 @@ async function saveEdit(slot) {
       location: editForm.value.location,
       resources: editForm.value.resources,
       outcomes: editForm.value.outcomes,
-      visibility: editForm.value.visibility
+      visibility: editForm.value.visibility,
+      auto_accept: editForm.value.auto_accept ? 1 : 0
     })
     editingId.value = null
     await loadAvailability()
@@ -538,6 +542,10 @@ onMounted(() => {
                 <span v-if="slot.visibility === 'Private'" class="badge bg-dark ms-1">
                   <i class="bi bi-lock-fill me-1"></i>Private
                 </span>
+                <span class="badge ms-1" :class="slot.auto_accept ? 'bg-light text-dark border' : 'bg-warning text-dark'">
+                  <i :class="slot.auto_accept ? 'bi bi-lightning-charge' : 'bi bi-hand-thumbs-up'" class="me-1"></i>
+                  {{ slot.auto_accept ? 'Instant' : 'Approval' }}
+                </span>
               </span>
               <span class="d-flex gap-2">
                 <button
@@ -604,6 +612,13 @@ onMounted(() => {
                   <select v-model="editForm.visibility" class="form-select form-select-sm">
                     <option value="Public">Public (anyone can find &amp; book)</option>
                     <option value="Private">Private (invite link only)</option>
+                  </select>
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small">Booking approval</label>
+                  <select v-model="editForm.auto_accept" class="form-select form-select-sm">
+                    <option :value="true">Auto-accept (instant confirm)</option>
+                    <option :value="false">I approve each request</option>
                   </select>
                 </div>
               </div>
@@ -673,6 +688,13 @@ onMounted(() => {
             <select v-model="newSlot.visibility" class="form-select form-select-sm">
               <option value="Public">Public (anyone can find &amp; book)</option>
               <option value="Private">Private (invite link only)</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small">Booking approval</label>
+            <select v-model="newSlot.auto_accept" class="form-select form-select-sm">
+              <option :value="true">Auto-accept (instant confirm)</option>
+              <option :value="false">I approve each request</option>
             </select>
           </div>
           <div class="col-md-2">

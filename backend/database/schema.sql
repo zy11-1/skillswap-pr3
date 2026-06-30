@@ -107,6 +107,7 @@ CREATE TABLE IF NOT EXISTS Message (
     body         TEXT NOT NULL,
     is_read      TINYINT(1) NOT NULL DEFAULT 0,
     category     ENUM('chat', 'booking', 'system', 'marketplace') NOT NULL DEFAULT 'chat',
+    visible_at   DATETIME NULL,   -- delayed notifications: only surface once NOW() >= visible_at
     sent_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_message_sender FOREIGN KEY (sender_id) REFERENCES User(user_id) ON DELETE CASCADE,
     CONSTRAINT fk_message_receiver FOREIGN KEY (receiver_id) REFERENCES User(user_id) ON DELETE CASCADE
@@ -145,6 +146,8 @@ CREATE TABLE IF NOT EXISTS TutorAvailability (
     status ENUM('Active', 'Cancelled') NOT NULL DEFAULT 'Active',
     visibility ENUM('Public', 'Private') NOT NULL DEFAULT 'Public',
     share_token VARCHAR(40) NULL,      -- invite link token for Private slots
+    auto_accept TINYINT(1) NOT NULL DEFAULT 1,  -- 1 = confirm instantly, 0 = tutor approves
+    payment_timing ENUM('prepay', 'postpay') NOT NULL DEFAULT 'postpay',
     CONSTRAINT fk_availability_tutor FOREIGN KEY (tutor_id) REFERENCES User(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 

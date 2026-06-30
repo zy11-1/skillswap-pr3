@@ -40,7 +40,7 @@ class BookingController
             SELECT b.*, learner.name AS learner_name, tutor.name AS tutor_name, s.name AS skill_name,
                    r.review_id, r.rating AS review_rating, r.comment AS review_comment,
                    ta.mode AS slot_mode, ta.meeting_link, ta.location AS slot_location,
-                   ta.resources AS slot_resources, ta.outcomes AS slot_outcomes
+                   ta.resources AS slot_resources, ta.outcomes AS slot_outcomes, ta.capacity AS slot_capacity
             FROM Booking b
             JOIN User learner ON learner.user_id = b.learner_id
             JOIN User tutor ON tutor.user_id = b.tutor_id

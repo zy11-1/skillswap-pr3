@@ -61,6 +61,12 @@ const themeClass = computed(() => {
   return auth.isTutorMode ? 'theme-tutor' : 'theme-learner'
 })
 
+// Brand click goes to the home that matches the current hat.
+const homeLink = computed(() => {
+  if (auth.isAdmin) return '/admin'
+  return auth.isTutorMode ? '/tutor-dashboard' : '/marketplace'
+})
+
 function switchMode(mode) {
   auth.setMode(mode)
   // Send the user to the home screen of the mode they picked.
@@ -77,7 +83,7 @@ function handleLogout() {
   <div :class="themeClass">
   <nav v-if="showNavbar" class="navbar navbar-expand-lg navbar-dark bg-primary-ss shadow-sm">
     <div class="container">
-      <router-link class="navbar-brand" to="/marketplace">
+      <router-link class="navbar-brand" :to="homeLink">
         <i class="bi bi-mortarboard-fill me-2"></i>SkillSwap
       </router-link>
       <button
@@ -90,22 +96,14 @@ function handleLogout() {
       </button>
       <div class="collapse navbar-collapse" id="navMenu">
         <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-          <li class="nav-item">
+          <!-- Mode-relevant primary links only -->
+          <li v-if="!auth.isAdmin && auth.isLearnerMode" class="nav-item">
             <router-link class="nav-link" to="/marketplace">Marketplace</router-link>
           </li>
-          <li class="nav-item">
-            <router-link class="nav-link" to="/bookings">My Bookings</router-link>
+          <li v-if="!auth.isAdmin" class="nav-item">
+            <router-link class="nav-link" to="/bookings">My Classes</router-link>
           </li>
-          <li class="nav-item">
-            <router-link class="nav-link" to="/wallet">Wallet</router-link>
-          </li>
-          <li class="nav-item">
-            <router-link class="nav-link" to="/messages">Messages</router-link>
-          </li>
-          <li class="nav-item">
-            <router-link class="nav-link" to="/group-classes">Group Classes</router-link>
-          </li>
-          <li v-if="auth.isTutorMode" class="nav-item">
+          <li v-if="!auth.isAdmin && auth.isTutorMode" class="nav-item">
             <router-link class="nav-link" to="/tutor-dashboard">Tutor Dashboard</router-link>
           </li>
           <li v-if="auth.isAdmin" class="nav-item">
@@ -134,6 +132,14 @@ function handleLogout() {
         </div>
 
         <div class="d-flex align-items-center text-white">
+          <!-- Always-available utilities as icons -->
+          <router-link to="/messages" class="btn btn-sm btn-outline-light me-2" title="Messages" aria-label="Messages">
+            <i class="bi bi-chat-dots"></i>
+          </router-link>
+          <router-link to="/wallet" class="btn btn-sm btn-outline-light me-2" title="Wallet" aria-label="Wallet">
+            <i class="bi bi-wallet2"></i>
+          </router-link>
+
           <!-- Notification bell -->
           <div class="position-relative me-3">
             <button class="btn btn-sm btn-outline-light position-relative" @click="toggleNotif" aria-label="Notifications">

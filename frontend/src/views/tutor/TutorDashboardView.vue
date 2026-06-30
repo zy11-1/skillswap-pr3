@@ -11,17 +11,16 @@ function blankSlot() {
   return {
     available_date: new Date().toISOString().split('T')[0],
     start_time: '09:00',
-    end_time: '17:00',
-    slot_type: 'Solo',   // 'Solo' (capacity 1) or 'Group' (capacity > 1)
-    group_capacity: 5,
-    mode: 'Physical',    // 'Physical' or 'Online'
+    end_time: '11:00',
+    capacity: 5,          // number of seats in this group class
+    base_price: 20,       // starting price per seat, per hour (RM10 floor)
+    repeat_weeks: 1,      // 1 = single slot; >1 creates that many weekly copies
+    mode: 'Physical',     // 'Physical' or 'Online'
     meeting_link: '',
     location: '',
     resources: '',
     outcomes: '',
-    visibility: 'Public', // 'Public' (browsable) or 'Private' (invite link only)
-    auto_accept: true,    // instant confirm vs manual approval
-    payment_timing: 'postpay' // 'postpay' (pay after) or 'prepay' (pay at booking)
+    visibility: 'Public'  // 'Public' (browsable) or 'Private' (invite link only)
   }
 }
 
@@ -191,10 +190,13 @@ async function addSlot() {
     return
   }
   slotError.value = ''
-  // Solo = 1 seat; Group = the chosen capacity (min 2).
-  const capacity = newSlot.value.slot_type === 'Group' ? Number(newSlot.value.group_capacity) : 1
-  if (newSlot.value.slot_type === 'Group' && capacity < 2) {
-    slotError.value = 'A group slot needs a capacity of at least 2.'
+  const capacity = Number(newSlot.value.capacity)
+  if (capacity < 1) {
+    slotError.value = 'A group class needs at least 1 seat.'
+    return
+  }
+  if (Number(newSlot.value.base_price) < 10) {
+    slotError.value = 'Base price must be at least RM10 per hour.'
     return
   }
   saving.value = true
@@ -204,14 +206,14 @@ async function addSlot() {
       start_time: newSlot.value.start_time,
       end_time: newSlot.value.end_time,
       capacity,
+      base_price: Number(newSlot.value.base_price),
+      repeat_weeks: Number(newSlot.value.repeat_weeks) || 1,
       mode: newSlot.value.mode,
       meeting_link: newSlot.value.meeting_link,
       location: newSlot.value.location,
       resources: newSlot.value.resources,
       outcomes: newSlot.value.outcomes,
-      visibility: newSlot.value.visibility,
-      auto_accept: newSlot.value.auto_accept ? 1 : 0,
-      payment_timing: newSlot.value.payment_timing
+      visibility: newSlot.value.visibility
     })
     // Reload so the new slot shows its capacity/seats from the server.
     await loadAvailability()
@@ -229,19 +231,38 @@ function startEdit(slot) {
   editingId.value = slot.availability_id
   editForm.value = {
     capacity: slot.capacity,
+    base_price: slot.base_price,
     mode: slot.mode || 'Physical',
     meeting_link: slot.meeting_link || '',
     location: slot.location || '',
     resources: slot.resources || '',
     outcomes: slot.outcomes || '',
-    visibility: slot.visibility || 'Public',
-    auto_accept: slot.auto_accept !== false,
-    payment_timing: slot.payment_timing || 'postpay'
+    visibility: slot.visibility || 'Public'
   }
+  // Base price is only editable before anyone has booked.
+  editForm.value.priceLocked = (slot.seats_taken || 0) > 0
 }
 
 function cancelEdit() {
   editingId.value = null
+}
+
+// Syllabus prompt: once the first student locks a slot's topic, the tutor
+// must publish "Topics covered" before anyone else can join.
+const syllabusDraft = ref({})        // keyed by availability_id
+const savingSyllabus = ref(null)
+async function saveSyllabus(slot) {
+  const text = (syllabusDraft.value[slot.availability_id] || '').trim()
+  if (!text) return
+  savingSyllabus.value = slot.availability_id
+  try {
+    await api.setSyllabus(slot.availability_id, text)
+    await loadAvailability()
+  } catch (err) {
+    alert(err.message || 'Could not save the syllabus.')
+  } finally {
+    savingSyllabus.value = null
+  }
 }
 
 async function saveEdit(slot) {
@@ -254,14 +275,13 @@ async function saveEdit(slot) {
   try {
     await api.updateAvailability(slot.availability_id, {
       capacity: Number(editForm.value.capacity),
+      base_price: Number(editForm.value.base_price),
       mode: editForm.value.mode,
       meeting_link: editForm.value.meeting_link,
       location: editForm.value.location,
       resources: editForm.value.resources,
       outcomes: editForm.value.outcomes,
-      visibility: editForm.value.visibility,
-      auto_accept: editForm.value.auto_accept ? 1 : 0,
-      payment_timing: editForm.value.payment_timing
+      visibility: editForm.value.visibility
     })
     editingId.value = null
     await loadAvailability()
@@ -550,11 +570,8 @@ onMounted(() => {
               <span>
                 <strong>{{ slot.available_date }}</strong>
                 {{ slot.start_time.slice(0,5) }} – {{ slot.end_time.slice(0,5) }}
-                <span class="badge ms-2" :class="slot.type === 'Group' ? 'bg-info text-dark' : 'bg-secondary'">
-                  <i :class="slot.type === 'Group' ? 'bi bi-people-fill' : 'bi bi-person-fill'" class="me-1"></i>
-                  {{ slot.type }}
-                  <template v-if="slot.type === 'Group'"> · {{ slot.seats_taken }}/{{ slot.capacity }} booked</template>
-                  <template v-else-if="slot.seats_taken > 0"> · booked</template>
+                <span class="badge ms-2 bg-info text-dark">
+                  <i class="bi bi-people-fill me-1"></i>{{ slot.seats_taken }}/{{ slot.capacity }} seats
                 </span>
                 <span class="badge ms-1" :class="slot.mode === 'Online' ? 'bg-primary' : 'bg-success'">
                   <i :class="slot.mode === 'Online' ? 'bi bi-camera-video' : 'bi bi-geo-alt'" class="me-1"></i>
@@ -563,9 +580,11 @@ onMounted(() => {
                 <span v-if="slot.visibility === 'Private'" class="badge bg-dark ms-1">
                   <i class="bi bi-lock-fill me-1"></i>Private
                 </span>
-                <span class="badge ms-1" :class="slot.auto_accept ? 'bg-light text-dark border' : 'bg-warning text-dark'">
-                  <i :class="slot.auto_accept ? 'bi bi-lightning-charge' : 'bi bi-hand-thumbs-up'" class="me-1"></i>
-                  {{ slot.auto_accept ? 'Instant' : 'Approval' }}
+                <span class="badge ms-1" :class="slot.topic ? 'bg-info-subtle text-info-emphasis' : 'bg-success-subtle text-success-emphasis'">
+                  <i class="bi bi-bookmark me-1"></i>{{ slot.topic || 'Open topic' }}
+                </span>
+                <span class="badge bg-light text-dark border ms-1">
+                  RM{{ Number(slot.base_price).toFixed(0) }}/hr base · now RM{{ Number(slot.next_price).toFixed(2) }}
                 </span>
               </span>
               <span class="d-flex gap-2">
@@ -597,12 +616,45 @@ onMounted(() => {
               </span>
             </div>
 
+            <!-- Syllabus prompt: required once the first student locks a topic -->
+            <div v-if="slot.needs_syllabus" class="mt-2 border-top pt-2">
+              <div class="alert alert-warning py-2 small mb-2">
+                <i class="bi bi-exclamation-triangle-fill me-1"></i>
+                A student started this class on <strong>{{ slot.topic }}</strong>. Add what you'll cover
+                so the rest of the class can join.
+              </div>
+              <div class="d-flex gap-2">
+                <input
+                  v-model="syllabusDraft[slot.availability_id]"
+                  type="text"
+                  class="form-control form-control-sm"
+                  placeholder="e.g. Vue.js – Part 2: Components & props"
+                />
+                <button
+                  class="btn btn-sm btn-primary text-nowrap"
+                  :disabled="savingSyllabus === slot.availability_id"
+                  @click="saveSyllabus(slot)"
+                >
+                  {{ savingSyllabus === slot.availability_id ? 'Saving…' : 'Publish' }}
+                </button>
+              </div>
+            </div>
+            <div v-else-if="slot.topics_covered" class="mt-2 small text-muted">
+              <i class="bi bi-card-text me-1"></i><strong>Covering:</strong> {{ slot.topics_covered }}
+            </div>
+
             <!-- Inline editor (time is fixed; everything else editable) -->
             <div v-if="editingId === slot.availability_id" class="mt-2 border-top pt-2">
               <div class="row g-2">
                 <div class="col-md-3">
-                  <label class="form-label small">Capacity</label>
+                  <label class="form-label small">Seats</label>
                   <input v-model.number="editForm.capacity" type="number" min="1" class="form-control form-control-sm" />
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label small">Base price /hr</label>
+                  <input v-model.number="editForm.base_price" type="number" min="10" step="1"
+                         :disabled="editForm.priceLocked" class="form-control form-control-sm" />
+                  <span v-if="editForm.priceLocked" class="text-muted" style="font-size:.65rem">locked — students booked</span>
                 </div>
                 <div class="col-md-3">
                   <label class="form-label small">Mode</label>
@@ -635,20 +687,6 @@ onMounted(() => {
                     <option value="Private">Private (invite link only)</option>
                   </select>
                 </div>
-                <div class="col-md-6">
-                  <label class="form-label small">Booking approval</label>
-                  <select v-model="editForm.auto_accept" class="form-select form-select-sm">
-                    <option :value="true">Auto-accept (instant confirm)</option>
-                    <option :value="false">I approve each request</option>
-                  </select>
-                </div>
-                <div class="col-md-6">
-                  <label class="form-label small">Payment</label>
-                  <select v-model="editForm.payment_timing" class="form-select form-select-sm">
-                    <option value="postpay">Pay after the session</option>
-                    <option value="prepay">Pay when booking (held)</option>
-                  </select>
-                </div>
               </div>
               <div class="mt-2 d-flex gap-2">
                 <button class="btn btn-sm btn-primary" :disabled="savingEdit" @click="saveEdit(slot)">
@@ -677,15 +715,21 @@ onMounted(() => {
             <input v-model="newSlot.end_time" type="time" class="form-control form-control-sm" />
           </div>
           <div class="col-md-2">
-            <label class="form-label small">Type</label>
-            <select v-model="newSlot.slot_type" class="form-select form-select-sm">
-              <option value="Solo">Solo (1 seat)</option>
-              <option value="Group">Group</option>
-            </select>
-          </div>
-          <div v-if="newSlot.slot_type === 'Group'" class="col-md-2">
             <label class="form-label small">Seats</label>
-            <input v-model.number="newSlot.group_capacity" type="number" min="2" class="form-control form-control-sm" />
+            <input v-model.number="newSlot.capacity" type="number" min="1" class="form-control form-control-sm" />
+          </div>
+          <div class="col-md-2">
+            <label class="form-label small">Base price /hr</label>
+            <input v-model.number="newSlot.base_price" type="number" min="10" step="1" class="form-control form-control-sm" />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small">Repeat weekly</label>
+            <select v-model.number="newSlot.repeat_weeks" class="form-select form-select-sm">
+              <option :value="1">Just this once</option>
+              <option :value="2">For 2 weeks</option>
+              <option :value="4">For 4 weeks</option>
+              <option :value="8">For 8 weeks</option>
+            </select>
           </div>
           <div class="col-md-3">
             <label class="form-label small">Mode</label>
@@ -719,28 +763,17 @@ onMounted(() => {
             </select>
           </div>
           <div class="col-md-3">
-            <label class="form-label small">Booking approval</label>
-            <select v-model="newSlot.auto_accept" class="form-select form-select-sm">
-              <option :value="true">Auto-accept (instant confirm)</option>
-              <option :value="false">I approve each request</option>
-            </select>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label small">Payment</label>
-            <select v-model="newSlot.payment_timing" class="form-select form-select-sm">
-              <option value="postpay">Pay after the session</option>
-              <option value="prepay">Pay when booking (held)</option>
-            </select>
-          </div>
-          <div class="col-md-2">
             <button class="btn btn-primary btn-sm w-100" :disabled="saving" @click="addSlot">
-              {{ saving ? '...' : 'Add slot' }}
+              {{ saving ? '...' : 'Add group class' }}
             </button>
           </div>
-          <div v-if="newSlot.visibility === 'Private'" class="col-12">
+          <div class="col-12">
             <p class="text-muted small mb-0">
-              <i class="bi bi-info-circle me-1"></i>Private slots won't show in the marketplace —
-              after adding, use <strong>Copy invite link</strong> to share it.
+              <i class="bi bi-info-circle me-1"></i>
+              Every session is a <strong>group class</strong>: the first student picks the topic, then you
+              add what you'll cover. Price starts at your base rate and drops RM1 per extra student (min RM10/hr).
+              Bookings are prepaid and wait for your approval.
+              <template v-if="newSlot.visibility === 'Private'"><br />Private slots won't show in the marketplace — use <strong>Copy invite link</strong> after adding.</template>
             </p>
           </div>
         </div>

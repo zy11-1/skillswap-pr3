@@ -76,6 +76,15 @@ async updateAvailability(availabilityId, data) {
   }
 },
 
+async setSyllabus(availabilityId, topicsCovered) {
+  try {
+    const res = await http.patch(`/api/tutor/availability/${availabilityId}/syllabus`, { topics_covered: topicsCovered })
+    return res.data
+  } catch (err) {
+    throw unwrapError(err)
+  }
+},
+
 async cancelAvailability(availabilityId, priority) {
   try {
     const res = await http.post(`/api/tutor/availability/${availabilityId}/cancel`, { priority })

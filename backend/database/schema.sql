@@ -76,7 +76,6 @@ CREATE TABLE IF NOT EXISTS Booking (
     total_amount    DECIMAL(10,2) NOT NULL,
     recording_url   VARCHAR(255) NULL,
     availability_id INT NULL,
-    payment_timing  ENUM('prepay', 'postpay') NOT NULL DEFAULT 'postpay',
     is_paid         TINYINT(1) NOT NULL DEFAULT 0,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_booking_learner FOREIGN KEY (learner_id) REFERENCES User(user_id) ON DELETE CASCADE,
@@ -129,9 +128,12 @@ CREATE TABLE IF NOT EXISTS WalletTransaction (
     CONSTRAINT fk_wallet_booking FOREIGN KEY (booking_id) REFERENCES Booking(booking_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 -- ---------------------------------------------------------------
--- 9. TutorAvailability (a tutor's free time slots)
---    capacity = how many learners can book this slot:
---    1 = Solo session, >1 = Group session.
+-- 9. TutorAvailability (a tutor's bookable group-class slots)
+--    Every slot is a dynamic group class: capacity = number of seats.
+--    Booking is always prepay and always needs the tutor's approval.
+--    The topic is set by the FIRST student who books (locked_skill_id),
+--    after which the tutor must fill in topics_covered before anyone
+--    else can join. Price drops RM1 per extra student down to a RM10 floor.
 -- ---------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS TutorAvailability (
     availability_id INT AUTO_INCREMENT PRIMARY KEY,
@@ -140,6 +142,7 @@ CREATE TABLE IF NOT EXISTS TutorAvailability (
     start_time TIME NOT NULL,
     end_time TIME NOT NULL,
     capacity INT NOT NULL DEFAULT 1,
+    base_price DECIMAL(10,2) NOT NULL DEFAULT 10.00,  -- starting price per seat, per hour
     mode ENUM('Online', 'Physical') NOT NULL DEFAULT 'Physical',
     meeting_link VARCHAR(255) NULL,   -- for Online sessions (Zoom/Meet/etc.)
     location VARCHAR(255) NULL,        -- for Physical sessions (room/place)
@@ -148,9 +151,12 @@ CREATE TABLE IF NOT EXISTS TutorAvailability (
     status ENUM('Active', 'Cancelled') NOT NULL DEFAULT 'Active',
     visibility ENUM('Public', 'Private') NOT NULL DEFAULT 'Public',
     share_token VARCHAR(40) NULL,      -- invite link token for Private slots
-    auto_accept TINYINT(1) NOT NULL DEFAULT 1,  -- 1 = confirm instantly, 0 = tutor approves
-    payment_timing ENUM('prepay', 'postpay') NOT NULL DEFAULT 'postpay',
-    CONSTRAINT fk_availability_tutor FOREIGN KEY (tutor_id) REFERENCES User(user_id) ON DELETE CASCADE
+    locked_skill_id INT NULL,          -- topic, chosen by the first student to book
+    topics_covered TEXT NULL,          -- tutor's syllabus, required once topic is locked
+    needs_syllabus TINYINT(1) NOT NULL DEFAULT 0,  -- 1 = topic set but syllabus not written yet
+    series_id VARCHAR(40) NULL,         -- links the weekly copies of a recurring slot
+    CONSTRAINT fk_availability_tutor FOREIGN KEY (tutor_id) REFERENCES User(user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_availability_skill FOREIGN KEY (locked_skill_id) REFERENCES Skill(skill_id) ON DELETE SET NULL
 ) ENGINE=InnoDB;
 
 -- Priority re-grab: when a tutor cancels a booked slot, the affected

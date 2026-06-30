@@ -9,6 +9,32 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 
 class TutorController
 {
+    // Dynamic group pricing: per-hour price can't fall below this floor.
+    private const MIN_HOURLY = 10.0;
+
+    /**
+     * Fill in the derived fields shared by every slot listing: numeric casts,
+     * the locked topic, the syllabus state, and the dynamic price the next
+     * student would pay (drops RM1 per booked seat, RM10/hr floor).
+     */
+    private function decorateSlot(array &$slot): void
+    {
+        $slot['capacity'] = (int) $slot['capacity'];
+        $slot['seats_taken'] = (int) ($slot['seats_taken'] ?? 0);
+        $slot['base_price'] = (float) $slot['base_price'];
+        $slot['locked_skill_id'] = $slot['locked_skill_id'] !== null ? (int) $slot['locked_skill_id'] : null;
+        $slot['needs_syllabus'] = ((int) ($slot['needs_syllabus'] ?? 0)) === 1;
+        // Topic: null until the first student locks it in.
+        $slot['topic'] = $slot['locked_skill_name'] ?? null;
+        // Students 2-N are blocked while the tutor still owes a syllabus.
+        $slot['awaiting_syllabus'] = $slot['locked_skill_id'] !== null && $slot['needs_syllabus'];
+        $hours = (int) max(1, round((strtotime($slot['end_time']) - strtotime($slot['start_time'])) / 3600));
+        $slot['hours'] = $hours;
+        $nextHourly = max(self::MIN_HOURLY, $slot['base_price'] - $slot['seats_taken']);
+        $slot['next_hourly'] = round($nextHourly, 2);
+        $slot['next_price'] = round($nextHourly * $hours, 2);
+    }
+
     /**
      * GET /api/tutors
      * Optional query params: search, skill_id, category, max_price
@@ -227,8 +253,9 @@ class TutorController
 
         $stmt = $db->prepare(
             "SELECT ta.availability_id, ta.tutor_id, ta.available_date, ta.start_time, ta.end_time, ta.capacity,
-                    ta.mode, ta.meeting_link, ta.location, ta.resources, ta.outcomes, ta.status,
-                    ta.visibility, ta.share_token, ta.auto_accept, ta.payment_timing,
+                    ta.base_price, ta.mode, ta.meeting_link, ta.location, ta.resources, ta.outcomes, ta.status,
+                    ta.visibility, ta.share_token, ta.locked_skill_id, ta.topics_covered, ta.needs_syllabus,
+                    sk.name AS locked_skill_name,
                     (SELECT COUNT(*) FROM Booking b
                      WHERE b.availability_id = ta.availability_id AND b.status <> 'Cancelled') AS seats_taken,
                     (SELECT COUNT(*) FROM SlotPriority sp
@@ -238,6 +265,7 @@ class TutorController
                      WHERE sp2.new_slot_id = ta.availability_id AND sp2.status = 'Offered'
                        AND sp2.expires_at > NOW() AND sp2.learner_id = :viewer_me) AS i_have_priority
              FROM TutorAvailability ta
+             LEFT JOIN Skill sk ON sk.skill_id = ta.locked_skill_id
              WHERE ta.tutor_id = :tutor_id AND ta.available_date >= CURDATE() AND ta.status = 'Active'$visibilityFilter
              ORDER BY ta.available_date, ta.start_time"
         );
@@ -245,16 +273,13 @@ class TutorController
         $slots = $stmt->fetchAll();
 
         foreach ($slots as &$slot) {
-            $slot['capacity'] = (int) $slot['capacity'];
-            $slot['seats_taken'] = (int) $slot['seats_taken'];
+            $this->decorateSlot($slot);
             $slot['reserved'] = (int) $slot['reserved_others'];
             $slot['i_have_priority'] = ((int) $slot['i_have_priority']) > 0;
-            $slot['auto_accept'] = ((int) $slot['auto_accept']) === 1;
             // A non-priority viewer can't touch seats reserved for others.
-            // A priority holder ignores their own reservation (it IS their seat).
             $slot['seats_left'] = max(0, $slot['capacity'] - $slot['seats_taken'] - $slot['reserved']);
-            $slot['type'] = $slot['capacity'] > 1 ? 'Group' : 'Solo';
             $slot['is_full'] = $slot['seats_left'] <= 0;
+            $slot['bookable'] = !$slot['is_full'] && !$slot['awaiting_syllabus'];
             unset($slot['reserved_others']);
             // Never leak a private slot's token to anyone but the owner.
             if (!$isOwner) {
@@ -278,8 +303,10 @@ class TutorController
         $db = Database::getConnection();
 
         $stmt = $db->prepare(
-            "SELECT ta.*, u.name AS tutor_name, u.photo_url AS tutor_photo, u.faculty AS tutor_faculty
+            "SELECT ta.*, u.name AS tutor_name, u.photo_url AS tutor_photo, u.faculty AS tutor_faculty,
+                    sk.name AS locked_skill_name
              FROM TutorAvailability ta JOIN User u ON u.user_id = ta.tutor_id
+             LEFT JOIN Skill sk ON sk.skill_id = ta.locked_skill_id
              WHERE ta.share_token = :token AND ta.status = 'Active'"
         );
         $stmt->execute(['token' => $token]);
@@ -313,7 +340,11 @@ class TutorController
         }
         unset($o);
 
-        $capacity = (int) $slot['capacity'];
+        $slot['seats_taken'] = $seatsTaken;
+        $this->decorateSlot($slot);
+        $capacity = $slot['capacity'];
+        $seatsLeft = max(0, $capacity - $seatsTaken - $reservedOthers);
+        $isFull = $seatsLeft <= 0;
         $data = [
             'availability_id' => (int) $slot['availability_id'],
             'tutor_id' => (int) $slot['tutor_id'],
@@ -323,27 +354,39 @@ class TutorController
             'start_time' => $slot['start_time'],
             'end_time' => $slot['end_time'],
             'capacity' => $capacity,
+            'base_price' => $slot['base_price'],
             'mode' => $slot['mode'],
             'location' => $slot['location'],
             'outcomes' => $slot['outcomes'],
             'resources' => $slot['resources'],
             'visibility' => $slot['visibility'],
             'share_token' => $token,
-            'auto_accept' => ((int) $slot['auto_accept']) === 1,
-            'payment_timing' => $slot['payment_timing'],
+            'locked_skill_id' => $slot['locked_skill_id'],
+            'topic' => $slot['topic'],
+            'topics_covered' => $slot['topics_covered'],
+            'needs_syllabus' => $slot['needs_syllabus'],
+            'awaiting_syllabus' => $slot['awaiting_syllabus'],
+            'hours' => $slot['hours'],
+            'next_price' => $slot['next_price'],
+            'next_hourly' => $slot['next_hourly'],
             'seats_taken' => $seatsTaken,
-            'seats_left' => max(0, $capacity - $seatsTaken - $reservedOthers),
-            'type' => $capacity > 1 ? 'Group' : 'Solo',
+            'seats_left' => $seatsLeft,
             'offerings' => $offerings,
+            'is_full' => $isFull,
+            'bookable' => !$isFull && !$slot['awaiting_syllabus'],
         ];
-        $data['is_full'] = $data['seats_left'] <= 0;
 
         return $this->json($response, ['data' => $data], 200);
     }
 
     /**
      * POST /api/tutor/availability
-     * Body: { available_date, start_time, end_time }
+     * Body: { available_date, start_time, end_time, capacity, base_price,
+     *         mode?, meeting_link?, location?, resources?, outcomes?,
+     *         visibility?, repeat_weeks? }
+     * Creates a dynamic group-class slot. With repeat_weeks > 1 it also
+     * creates that many weekly copies (a recurring series). Every slot is
+     * prepay + needs-approval; its topic is set by the first student.
      */
     public function addAvailability(Request $request, Response $response): Response
     {
@@ -353,68 +396,73 @@ class TutorController
         $date = (string) ($data['available_date'] ?? '');
         $start = (string) ($data['start_time'] ?? '');
         $end = (string) ($data['end_time'] ?? '');
-        // Capacity: 1 = Solo session, >1 = Group session. Defaults to 1
-        // so older clients that don't send it still create a Solo slot.
-        $capacity = (int) ($data['capacity'] ?? 1);
+        $capacity = (int) ($data['capacity'] ?? 1);             // number of seats
+        $basePrice = round((float) ($data['base_price'] ?? self::MIN_HOURLY), 2); // per seat, per hour
         $mode = ($data['mode'] ?? 'Physical') === 'Online' ? 'Online' : 'Physical';
         $meetingLink = trim((string) ($data['meeting_link'] ?? ''));
         $location = trim((string) ($data['location'] ?? ''));
         $resources = trim((string) ($data['resources'] ?? ''));
         $outcomes = trim((string) ($data['outcomes'] ?? ''));
-        // Public (browsable) or Private (invite-link only).
         $visibility = ($data['visibility'] ?? 'Public') === 'Private' ? 'Private' : 'Public';
-        $shareToken = $visibility === 'Private' ? bin2hex(random_bytes(16)) : null;
-        // Auto-accept (instant confirm) vs manual tutor approval.
-        $autoAccept = array_key_exists('auto_accept', $data) ? (int) (bool) $data['auto_accept'] : 1;
-        $paymentTiming = ($data['payment_timing'] ?? 'postpay') === 'prepay' ? 'prepay' : 'postpay';
+        // Optional weekly recurrence: how many weekly copies to create (1 = just one).
+        $repeatWeeks = max(1, min(12, (int) ($data['repeat_weeks'] ?? 1)));
 
         if ($date === '' || $start === '' || $end === '') {
             return $this->json($response, ['error' => 'available_date, start_time, end_time are required.'], 422);
         }
-
         if ($date < date('Y-m-d')) {
             return $this->json($response, ['error' => 'Cannot set availability in the past.'], 422);
         }
-
         if ($end <= $start) {
             return $this->json($response, ['error' => 'end_time must be after start_time.'], 422);
         }
-
         if ($capacity < 1) {
             return $this->json($response, ['error' => 'capacity must be at least 1.'], 422);
         }
+        if ($basePrice < self::MIN_HOURLY) {
+            return $this->json($response, ['error' => 'Base price must be at least RM' . number_format(self::MIN_HOURLY, 2) . ' per hour.'], 422);
+        }
 
         $db = Database::getConnection();
-        $stmt = $db->prepare(
-            'INSERT INTO TutorAvailability (tutor_id, available_date, start_time, end_time, capacity, mode, meeting_link, location, resources, outcomes, visibility, share_token, auto_accept, payment_timing)
-             VALUES (:tutor_id, :date, :start, :end, :capacity, :mode, :meeting_link, :location, :resources, :outcomes, :visibility, :share_token, :auto_accept, :payment_timing)'
-        );
-        $stmt->execute([
-            'tutor_id' => $userId,
-            'date' => $date,
-            'start' => $start,
-            'end' => $end,
-            'capacity' => $capacity,
-            'mode' => $mode,
-            'meeting_link' => $meetingLink === '' ? null : $meetingLink,
-            'location' => $location === '' ? null : $location,
-            'resources' => $resources === '' ? null : $resources,
-            'outcomes' => $outcomes === '' ? null : $outcomes,
-            'visibility' => $visibility,
-            'share_token' => $shareToken,
-            'auto_accept' => $autoAccept,
-            'payment_timing' => $paymentTiming,
-        ]);
+        // Recurring slots share a series_id so they can be recognised as a set.
+        $seriesId = $repeatWeeks > 1 ? bin2hex(random_bytes(16)) : null;
 
-        $id = (int) $db->lastInsertId();
+        $insert = $db->prepare(
+            'INSERT INTO TutorAvailability (tutor_id, available_date, start_time, end_time, capacity, base_price, mode, meeting_link, location, resources, outcomes, visibility, share_token, series_id)
+             VALUES (:tutor_id, :date, :start, :end, :capacity, :base_price, :mode, :meeting_link, :location, :resources, :outcomes, :visibility, :share_token, :series_id)'
+        );
+
+        $createdIds = [];
+        for ($i = 0; $i < $repeatWeeks; $i++) {
+            $slotDate = date('Y-m-d', strtotime("$date +" . ($i * 7) . ' days'));
+            // Each weekly copy is its own bookable slot, so it gets its own invite token.
+            $shareToken = $visibility === 'Private' ? bin2hex(random_bytes(16)) : null;
+            $insert->execute([
+                'tutor_id' => $userId,
+                'date' => $slotDate,
+                'start' => $start,
+                'end' => $end,
+                'capacity' => $capacity,
+                'base_price' => $basePrice,
+                'mode' => $mode,
+                'meeting_link' => $meetingLink === '' ? null : $meetingLink,
+                'location' => $location === '' ? null : $location,
+                'resources' => $resources === '' ? null : $resources,
+                'outcomes' => $outcomes === '' ? null : $outcomes,
+                'visibility' => $visibility,
+                'share_token' => $shareToken,
+                'series_id' => $seriesId,
+            ]);
+            $createdIds[] = (int) $db->lastInsertId();
+        }
 
         // If this tutor has students waiting from a cancelled slot, offer
-        // them this new slot first (12h priority window).
-        $this->offerPriorityForNewSlot($db, $userId, $id);
+        // them the first new slot first (12h priority window).
+        $this->offerPriorityForNewSlot($db, $userId, $createdIds[0]);
 
         return $this->json($response, ['data' => [
-            'availability_id' => $id, 'capacity' => $capacity,
-            'visibility' => $visibility, 'share_token' => $shareToken,
+            'availability_id' => $createdIds[0], 'created' => count($createdIds),
+            'capacity' => $capacity, 'base_price' => $basePrice, 'visibility' => $visibility,
         ]], 201);
     }
 
@@ -483,10 +531,6 @@ class TutorController
         $visibility = array_key_exists('visibility', $data)
             ? (($data['visibility'] === 'Private') ? 'Private' : 'Public')
             : $slot['visibility'];
-        $autoAccept = array_key_exists('auto_accept', $data) ? (int) (bool) $data['auto_accept'] : (int) $slot['auto_accept'];
-        $paymentTiming = array_key_exists('payment_timing', $data)
-            ? (($data['payment_timing'] === 'prepay') ? 'prepay' : 'postpay')
-            : $slot['payment_timing'];
 
         // Going Private mints a token if there isn't one yet; the token is
         // kept (not regenerated) so an already-shared link stays valid.
@@ -507,16 +551,26 @@ class TutorController
             return $this->json($response, ['error' => "Capacity can't be lower than the $seatsTaken seat(s) already booked."], 422);
         }
 
+        // The base price can only change while no one has booked yet — once
+        // students are in, their locked-in prices must not move under them.
+        $basePrice = (float) $slot['base_price'];
+        if (array_key_exists('base_price', $data) && $seatsTaken === 0) {
+            $basePrice = round((float) $data['base_price'], 2);
+            if ($basePrice < self::MIN_HOURLY) {
+                return $this->json($response, ['error' => 'Base price must be at least RM' . number_format(self::MIN_HOURLY, 2) . ' per hour.'], 422);
+            }
+        }
+
         $stmt = $db->prepare(
             'UPDATE TutorAvailability
-             SET capacity = :capacity, mode = :mode, meeting_link = :meeting_link,
+             SET capacity = :capacity, base_price = :base_price, mode = :mode, meeting_link = :meeting_link,
                  location = :location, resources = :resources, outcomes = :outcomes,
-                 visibility = :visibility, share_token = :share_token,
-                 auto_accept = :auto_accept, payment_timing = :payment_timing
+                 visibility = :visibility, share_token = :share_token
              WHERE availability_id = :id'
         );
         $stmt->execute([
             'capacity' => $capacity,
+            'base_price' => $basePrice,
             'mode' => $mode,
             'meeting_link' => $meetingLink === '' ? null : $meetingLink,
             'location' => $location === '' ? null : $location,
@@ -524,8 +578,6 @@ class TutorController
             'outcomes' => $outcomes === '' ? null : $outcomes,
             'visibility' => $visibility,
             'share_token' => $shareToken,
-            'auto_accept' => $autoAccept,
-            'payment_timing' => $paymentTiming,
             'id' => $availabilityId,
         ]);
 
@@ -550,6 +602,60 @@ class TutorController
         return $this->json($response, ['data' => [
             'availability_id' => $availabilityId, 'capacity' => $capacity, 'mode' => $mode,
             'visibility' => $visibility, 'share_token' => $shareToken,
+        ]], 200);
+    }
+
+    /**
+     * PATCH /api/tutor/availability/{id}/syllabus (requires JWT, owner only)
+     * Body: { topics_covered }
+     * After the first student locks the topic, the tutor must publish a
+     * "Topics covered" description here. Saving it clears the syllabus flag
+     * and reopens the slot so the rest of the class can join.
+     */
+    public function setSyllabus(Request $request, Response $response, array $args): Response
+    {
+        $userId = (int) $request->getAttribute('user_id');
+        $availabilityId = (int) $args['id'];
+        $data = (array) $request->getParsedBody();
+        $topics = trim((string) ($data['topics_covered'] ?? ''));
+
+        if ($topics === '') {
+            return $this->json($response, ['error' => 'Please describe what this session will cover.'], 422);
+        }
+
+        $db = Database::getConnection();
+        $stmt = $db->prepare('SELECT * FROM TutorAvailability WHERE availability_id = :id');
+        $stmt->execute(['id' => $availabilityId]);
+        $slot = $stmt->fetch();
+        if (!$slot) {
+            return $this->json($response, ['error' => 'Slot not found.'], 404);
+        }
+        if ((int) $slot['tutor_id'] !== $userId) {
+            return $this->json($response, ['error' => 'You can only edit your own sessions.'], 403);
+        }
+        if ($slot['locked_skill_id'] === null) {
+            return $this->json($response, ['error' => 'No one has started this session yet, so there is no topic to describe.'], 422);
+        }
+
+        $wasAwaiting = (int) $slot['needs_syllabus'] === 1;
+        $db->prepare('UPDATE TutorAvailability SET topics_covered = :t, needs_syllabus = 0 WHERE availability_id = :id')
+           ->execute(['t' => $topics, 'id' => $availabilityId]);
+
+        // Reopening the slot: let already-enrolled students know the plan is up.
+        if ($wasAwaiting) {
+            $when = $slot['available_date'] . ' ' . substr($slot['start_time'], 0, 5);
+            $stmt = $db->prepare("SELECT DISTINCT learner_id FROM Booking WHERE availability_id = :id AND status <> 'Cancelled'");
+            $stmt->execute(['id' => $availabilityId]);
+            foreach ($stmt->fetchAll() as $row) {
+                \App\Controllers\MessageController::notify(
+                    $db, $userId, (int) $row['learner_id'],
+                    "Your tutor published what they'll cover for the session on $when."
+                );
+            }
+        }
+
+        return $this->json($response, ['data' => [
+            'availability_id' => $availabilityId, 'topics_covered' => $topics, 'needs_syllabus' => false,
         ]], 200);
     }
 

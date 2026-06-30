@@ -35,18 +35,9 @@ async function load() {
 
 onMounted(load)
 
-const selectedOffering = computed(() =>
-  slot.value?.offerings?.find((o) => o.skill_id === Number(selectedSkillId.value))
-)
-
-function hours() {
-  if (!slot.value) return 1
-  const [sh, sm] = slot.value.start_time.split(':').map(Number)
-  const [eh, em] = slot.value.end_time.split(':').map(Number)
-  return Math.max(1, Math.round((eh * 60 + em - (sh * 60 + sm)) / 60))
-}
-
-const price = computed(() => (selectedOffering.value ? (selectedOffering.value.hourly_rate * hours()).toFixed(2) : '0.00'))
+// Once the first student has booked, the topic is locked for everyone.
+const isLocked = computed(() => !!slot.value?.topic)
+const price = computed(() => (slot.value ? Number(slot.value.next_price).toFixed(2) : '0.00'))
 
 function formatDate(d) {
   return new Date(d).toLocaleDateString('en-MY', { weekday: 'long', day: 'numeric', month: 'long' })
@@ -54,12 +45,11 @@ function formatDate(d) {
 
 async function reserve() {
   if (!auth.isLoggedIn) {
-    // Send them to login, then back to this invite.
     router.push({ name: 'login', query: { redirect: route.fullPath } })
     return
   }
-  if (!selectedSkillId.value) {
-    error.value = 'Please choose what you want to be taught.'
+  if (!isLocked.value && !selectedSkillId.value) {
+    error.value = 'Please choose a topic to start this class.'
     return
   }
   booking.value = true
@@ -67,11 +57,13 @@ async function reserve() {
   try {
     await api.createBooking({
       availability_id: slot.value.availability_id,
-      skill_id: Number(selectedSkillId.value),
+      // For a fresh slot this skill becomes the topic; for a locked slot the
+      // backend ignores it and uses the locked topic.
+      skill_id: Number(selectedSkillId.value) || undefined,
       share_token: token
     })
     confirmed.value = true
-    setTimeout(() => router.push('/bookings'), 1200)
+    setTimeout(() => router.push('/bookings'), 1300)
   } catch (err) {
     error.value = err.message || 'Could not book this session.'
   } finally {
@@ -93,7 +85,7 @@ async function reserve() {
     <div v-else-if="slot" class="card border-0 shadow-sm">
       <div class="card-body p-4">
         <span class="badge bg-dark mb-2"><i class="bi bi-lock-fill me-1"></i>Private invite</span>
-        <h4 class="fw-bold mb-1">You're invited to a session</h4>
+        <h4 class="fw-bold mb-1">You're invited to a group class</h4>
         <p class="text-muted mb-3">with <strong>{{ slot.tutor_name }}</strong></p>
 
         <ul class="list-unstyled small mb-3">
@@ -103,45 +95,48 @@ async function reserve() {
             <i :class="slot.mode === 'Online' ? 'bi bi-camera-video' : 'bi bi-geo-alt'" class="me-2"></i>
             {{ slot.mode }}<template v-if="slot.location"> · {{ slot.location }}</template>
           </li>
-          <li class="mb-1">
-            <i :class="slot.type === 'Group' ? 'bi bi-people-fill' : 'bi bi-person-fill'" class="me-2"></i>
-            {{ slot.type }}<template v-if="slot.type === 'Group'"> · {{ slot.seats_left }} seat(s) left</template>
-          </li>
+          <li class="mb-1"><i class="bi bi-people me-2"></i>{{ slot.seats_left }} of {{ slot.capacity }} seat(s) left</li>
+          <li v-if="slot.topic" class="mb-1"><i class="bi bi-bookmark-fill me-2"></i>Topic: <strong>{{ slot.topic }}</strong></li>
+          <li v-if="slot.topics_covered" class="mb-1"><i class="bi bi-card-text me-2"></i>{{ slot.topics_covered }}</li>
           <li v-if="slot.outcomes" class="mb-1"><i class="bi bi-bullseye me-2"></i>{{ slot.outcomes }}</li>
         </ul>
 
         <div v-if="confirmed" class="alert alert-success">
-          <i class="bi bi-check-circle-fill me-2"></i>Booked &amp; confirmed! Taking you to your bookings…
+          <i class="bi bi-check-circle-fill me-2"></i>Request sent! The tutor will approve it. Taking you to your bookings…
         </div>
         <template v-else>
           <div v-if="error" class="alert alert-danger py-2 small">{{ error }}</div>
 
           <div v-if="slot.is_full" class="alert alert-warning py-2 small">This session is full.</div>
+          <div v-else-if="slot.awaiting_syllabus" class="alert alert-warning py-2 small">
+            <i class="bi bi-hourglass-split me-1"></i>The tutor is finalising this session's topic details — check back soon.
+          </div>
           <template v-else>
-            <div class="mb-3">
-              <label class="form-label small">What do you want to be taught?</label>
+            <!-- Fresh slot: this invitee picks the topic. Locked slot: shown above. -->
+            <div v-if="!isLocked" class="mb-3">
+              <label class="form-label small">Pick the topic to start this class</label>
               <select v-model="selectedSkillId" class="form-select">
                 <option v-for="o in slot.offerings" :key="o.skill_id" :value="o.skill_id">
-                  {{ o.skill_name }} — RM{{ o.hourly_rate.toFixed(2) }}/hr ({{ o.level }})
+                  {{ o.skill_name }} ({{ o.level }})
                 </option>
               </select>
-              <p v-if="!slot.offerings.length" class="text-danger small mt-1">This tutor hasn't listed any skills yet.</p>
+              <p v-if="!slot.offerings.length" class="text-danger small mt-1">This tutor hasn't listed any topics yet.</p>
             </div>
 
             <div class="d-flex justify-content-between align-items-center py-2 border-top border-bottom mb-3">
-              <span class="text-muted small">Total</span>
+              <span class="text-muted small">Price now <span class="text-muted">(drops as it fills)</span></span>
               <span class="fw-bold text-primary-ss">RM{{ price }}</span>
             </div>
 
-            <div v-if="slot.payment_timing === 'prepay'" class="alert alert-warning py-2 small">
+            <div class="alert alert-warning py-2 small">
               <i class="bi bi-wallet2 me-1"></i>
-              Prepay session — <strong>RM{{ price }}</strong> will be deducted from your wallet on booking
-              (refunded if the tutor declines).
+              <strong>RM{{ price }}</strong> will be deducted from your wallet now (refunded if the tutor
+              declines, and partly refunded if the class fills up).
             </div>
 
-            <button class="btn btn-primary w-100" :disabled="booking || !slot.offerings.length" @click="reserve">
+            <button class="btn btn-primary w-100" :disabled="booking || (!isLocked && !slot.offerings.length)" @click="reserve">
               <span v-if="booking" class="spinner-border spinner-border-sm me-2"></span>
-              {{ auth.isLoggedIn ? (booking ? 'Booking…' : 'Reserve my seat') : 'Log in to reserve' }}
+              {{ auth.isLoggedIn ? (booking ? 'Booking…' : `Reserve my seat — RM${price}`) : 'Log in to reserve' }}
             </button>
           </template>
         </template>

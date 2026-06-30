@@ -19,6 +19,9 @@ class BookingController
     // Platform commission charged on every completed session (CLO3).
     private const COMMISSION_RATE = 0.10;
 
+    // Dynamic group pricing: per-hour price can't fall below this floor.
+    private const MIN_HOURLY = 10.0;
+
     /**
      * GET /api/bookings (requires JWT)
      * Returns the authenticated user's bookings — as learner or as tutor,
@@ -40,7 +43,8 @@ class BookingController
             SELECT b.*, learner.name AS learner_name, tutor.name AS tutor_name, s.name AS skill_name,
                    r.review_id, r.rating AS review_rating, r.comment AS review_comment,
                    ta.mode AS slot_mode, ta.meeting_link, ta.location AS slot_location,
-                   ta.resources AS slot_resources, ta.outcomes AS slot_outcomes, ta.capacity AS slot_capacity
+                   ta.resources AS slot_resources, ta.outcomes AS slot_outcomes, ta.capacity AS slot_capacity,
+                   ta.topics_covered AS slot_topics, ta.base_price AS slot_base_price
             FROM Booking b
             JOIN User learner ON learner.user_id = b.learner_id
             JOIN User tutor ON tutor.user_id = b.tutor_id
@@ -143,16 +147,14 @@ class BookingController
     {
         $learnerId = (int) $request->getAttribute('user_id');
         $availabilityId = (int) $data['availability_id'];
-        $skillId = (int) ($data['skill_id'] ?? 0);
-
-        if (!$skillId) {
-            return $this->json($response, ['error' => 'skill_id is required.'], 422);
-        }
+        $requestedSkillId = (int) ($data['skill_id'] ?? 0);
 
         $db = Database::getConnection();
         $db->beginTransaction();
         try {
-            // Lock the slot row for the duration of the transaction.
+            // Lock the slot row for the duration of the transaction. This
+            // serialises bookings on the slot, so "first student locks the
+            // topic" and the seat-based dynamic price are both race-safe.
             $stmt = $db->prepare('SELECT * FROM TutorAvailability WHERE availability_id = :id FOR UPDATE');
             $stmt->execute(['id' => $availabilityId]);
             $slot = $stmt->fetch();
@@ -183,15 +185,35 @@ class BookingController
             // Duration comes from the slot length (whole hours, min 1).
             $duration = (int) max(1, round((strtotime($slot['end_time']) - strtotime($slot['start_time'])) / 3600));
 
-            // Price the session from the tutor's rate for this skill.
-            $stmt = $db->prepare('SELECT hourly_rate FROM UserSkill WHERE user_id = :tutor_id AND skill_id = :skill_id');
-            $stmt->execute(['tutor_id' => $tutorId, 'skill_id' => $skillId]);
-            $offering = $stmt->fetch();
-            if (!$offering) {
-                $db->rollBack();
-                return $this->json($response, ['error' => 'This tutor does not offer that skill.'], 404);
+            // ---- Student-initiated topic --------------------------------
+            // A fresh group slot has no topic. The FIRST student to book
+            // picks a skill from the tutor's profile, which locks the slot's
+            // topic for everyone. Later students inherit that locked topic.
+            $lockedSkillId = $slot['locked_skill_id'] !== null ? (int) $slot['locked_skill_id'] : 0;
+            $isFirstBooker = $lockedSkillId === 0;
+
+            if ($isFirstBooker) {
+                if (!$requestedSkillId) {
+                    $db->rollBack();
+                    return $this->json($response, ['error' => 'Pick a topic to start this group class.'], 422);
+                }
+                // The topic must be one of the tutor's listed skills.
+                $stmt = $db->prepare('SELECT skill_id FROM UserSkill WHERE user_id = :tutor_id AND skill_id = :skill_id');
+                $stmt->execute(['tutor_id' => $tutorId, 'skill_id' => $requestedSkillId]);
+                if (!$stmt->fetch()) {
+                    $db->rollBack();
+                    return $this->json($response, ['error' => 'This tutor does not teach that topic.'], 404);
+                }
+                $skillId = $requestedSkillId;
+            } else {
+                // Topic is locked. Block joining until the tutor has written
+                // the "Topics covered" syllabus (transparency for students 2-N).
+                if ((int) $slot['needs_syllabus'] === 1) {
+                    $db->rollBack();
+                    return $this->json($response, ['error' => 'The tutor is still finalising this session\'s topic details — check back soon.'], 409);
+                }
+                $skillId = $lockedSkillId; // ignore any skill the client sent
             }
-            $totalAmount = (float) $offering['hourly_rate'] * $duration;
 
             // Already booked this slot?
             $stmt = $db->prepare("SELECT booking_id FROM Booking WHERE availability_id = :aid AND learner_id = :lid AND status <> 'Cancelled'");
@@ -241,30 +263,29 @@ class BookingController
                    ->execute(['pid' => $myPriorityId]);
             }
 
-            // Auto-accept slots confirm instantly; otherwise the booking waits
-            // as Pending for the tutor to accept or decline.
-            $autoAccept = (int) ($slot['auto_accept'] ?? 1) === 1;
-            $status = $autoAccept ? 'Accepted' : 'Pending';
+            // ---- Dynamic pricing ----------------------------------------
+            // Group classes get cheaper as they fill: the per-hour price drops
+            // RM1 for every student who has already booked, with a RM10 floor.
+            // Charged now (prepay) at this price; everyone is later equalised
+            // to the final lowest price when the session completes.
+            $hourly = max(self::MIN_HOURLY, (float) $slot['base_price'] - $seatsTaken);
+            $totalAmount = round($hourly * $duration, 2);
 
-            // Prepay slots charge the learner now (held until the session
-            // completes, refunded if declined/cancelled). Postpay settles later.
-            $paymentTiming = ($slot['payment_timing'] ?? 'postpay') === 'prepay' ? 'prepay' : 'postpay';
-            $isPaid = 0;
-            if ($paymentTiming === 'prepay') {
-                $stmt = $db->prepare('SELECT wallet_balance FROM User WHERE user_id = :id');
-                $stmt->execute(['id' => $learnerId]);
-                if ((float) $stmt->fetchColumn() < $totalAmount) {
-                    $db->rollBack();
-                    return $this->json($response, ['error' => 'This is a prepay session — you need RM' . number_format($totalAmount, 2) . ' in your wallet to book it.'], 422);
-                }
-                $db->prepare('UPDATE User SET wallet_balance = wallet_balance - :amt WHERE user_id = :id')
-                   ->execute(['amt' => $totalAmount, 'id' => $learnerId]);
-                $isPaid = 1;
+            // Booking is always prepay: the learner pays now (held, and refunded
+            // if the tutor declines/cancels). Needs the funds in their wallet.
+            $stmt = $db->prepare('SELECT wallet_balance FROM User WHERE user_id = :id');
+            $stmt->execute(['id' => $learnerId]);
+            if ((float) $stmt->fetchColumn() < $totalAmount) {
+                $db->rollBack();
+                return $this->json($response, ['error' => 'You need RM' . number_format($totalAmount, 2) . ' in your wallet to book this session.'], 422);
             }
+            $db->prepare('UPDATE User SET wallet_balance = wallet_balance - :amt WHERE user_id = :id')
+               ->execute(['amt' => $totalAmount, 'id' => $learnerId]);
 
+            // Every booking now waits as Pending for the tutor's approval.
             $stmt = $db->prepare(
-                "INSERT INTO Booking (learner_id, tutor_id, skill_id, booking_date, duration, status, total_amount, availability_id, payment_timing, is_paid)
-                 VALUES (:learner_id, :tutor_id, :skill_id, :booking_date, :duration, :status, :total_amount, :availability_id, :payment_timing, :is_paid)"
+                "INSERT INTO Booking (learner_id, tutor_id, skill_id, booking_date, duration, status, total_amount, availability_id, is_paid)
+                 VALUES (:learner_id, :tutor_id, :skill_id, :booking_date, :duration, 'Pending', :total_amount, :availability_id, 1)"
             );
             $stmt->execute([
                 'learner_id' => $learnerId,
@@ -272,18 +293,19 @@ class BookingController
                 'skill_id' => $skillId,
                 'booking_date' => date('Y-m-d H:i:s', strtotime($bookingDate)),
                 'duration' => $duration,
-                'status' => $status,
                 'total_amount' => $totalAmount,
                 'availability_id' => $availabilityId,
-                'payment_timing' => $paymentTiming,
-                'is_paid' => $isPaid,
             ]);
             $bookingId = (int) $db->lastInsertId();
 
             // Record the prepay debit on the learner's ledger.
-            if ($isPaid) {
-                $db->prepare("INSERT INTO WalletTransaction (user_id, amount, type, booking_id) VALUES (:uid, :amt, 'Debit', :bid)")
-                   ->execute(['uid' => $learnerId, 'amt' => $totalAmount, 'bid' => $bookingId]);
+            $db->prepare("INSERT INTO WalletTransaction (user_id, amount, type, booking_id) VALUES (:uid, :amt, 'Debit', :bid)")
+               ->execute(['uid' => $learnerId, 'amt' => $totalAmount, 'bid' => $bookingId]);
+
+            // First booker locks the topic and flags the tutor for a syllabus.
+            if ($isFirstBooker) {
+                $db->prepare('UPDATE TutorAvailability SET locked_skill_id = :sid, needs_syllabus = 1 WHERE availability_id = :aid')
+                   ->execute(['sid' => $skillId, 'aid' => $availabilityId]);
             }
 
             $db->commit();
@@ -293,16 +315,23 @@ class BookingController
             return $this->json($response, ['error' => 'Could not complete the booking.'], 500);
         }
 
-        // Notify the tutor: instant booking vs a request awaiting approval.
+        // Always a request awaiting the tutor's approval.
         \App\Controllers\MessageController::notify(
             $db, $learnerId, $tutorId,
-            $autoAccept
-                ? 'A student booked one of your sessions.'
-                : 'New booking request awaiting your approval in My Classes.'
+            'New booking request awaiting your approval in My Classes.'
         );
 
+        // The first booker set the topic — prompt the tutor to publish the
+        // "Topics covered" so the rest of the class can join.
+        if ($isFirstBooker) {
+            $skillName = (string) ($db->query('SELECT name FROM Skill WHERE skill_id = ' . (int) $skillId)->fetchColumn() ?: 'a topic');
+            \App\Controllers\MessageController::notify(
+                $db, $learnerId, $tutorId,
+                "A student started your group class on \"$skillName\". Add a 'Topics covered' description so others can join."
+            );
+        }
+
         $booking = $this->fetchBookingById($db, $bookingId);
-        $booking['auto_accepted'] = $autoAccept;
         return $this->json($response, ['data' => $booking], 201);
     }
 
@@ -340,51 +369,48 @@ class BookingController
         }
 
         $refunded = false;
+        $groupResult = null;
         $db->beginTransaction();
         try {
-            $stmt = $db->prepare('UPDATE Booking SET status = :status WHERE booking_id = :id');
-            $stmt->execute(['status' => $newStatus, 'id' => $bookingId]);
+            if ($newStatus === 'Completed' && $booking['availability_id'] !== null) {
+                // Group slot: complete & settle the WHOLE class together so
+                // everyone is equalised to the final (lowest) price.
+                $groupResult = $this->completeGroupSlot($db, (int) $booking['availability_id']);
+            } else {
+                $db->prepare('UPDATE Booking SET status = :status WHERE booking_id = :id')
+                   ->execute(['status' => $newStatus, 'id' => $bookingId]);
 
-            // When a session is marked Completed, settle the wallet.
-            // The learner pays the full amount; the platform takes a 10%
-            // commission (CLO3) and the tutor receives the remaining 90%.
-            // Crediting the platform/admin account keeps the closed-loop
-            // ledger balanced (total credits == total debits).
-            $amount = (float) $booking['total_amount'];
-            $updateBalance = $db->prepare('UPDATE User SET wallet_balance = wallet_balance + :amount WHERE user_id = :id');
-            $insertTxn = $db->prepare(
-                'INSERT INTO WalletTransaction (user_id, amount, type, booking_id) VALUES (:user_id, :amount, :type, :booking_id)'
-            );
+                $amount = (float) $booking['total_amount'];
+                $updateBalance = $db->prepare('UPDATE User SET wallet_balance = wallet_balance + :amount WHERE user_id = :id');
+                $insertTxn = $db->prepare(
+                    'INSERT INTO WalletTransaction (user_id, amount, type, booking_id) VALUES (:user_id, :amount, :type, :booking_id)'
+                );
 
-            if ($newStatus === 'Completed') {
-                // Settle: platform takes 10% (CLO3), tutor gets 90%. For
-                // postpay the learner pays now; for prepay they already paid
-                // at booking, so we only pay out the tutor + platform.
-                $commission = round($amount * self::COMMISSION_RATE, 2);
-                $tutorNet = round($amount - $commission, 2);
-
-                if ((int) $booking['is_paid'] !== 1) {
-                    $updateBalance->execute(['amount' => -$amount, 'id' => $booking['learner_id']]);
-                    $insertTxn->execute(['user_id' => $booking['learner_id'], 'amount' => $amount, 'type' => 'Debit', 'booking_id' => $bookingId]);
-                    $db->prepare('UPDATE Booking SET is_paid = 1 WHERE booking_id = :id')->execute(['id' => $bookingId]);
-                }
-
-                $updateBalance->execute(['amount' => $tutorNet, 'id' => $booking['tutor_id']]);
-                $insertTxn->execute(['user_id' => $booking['tutor_id'], 'amount' => $tutorNet, 'type' => 'Credit', 'booking_id' => $bookingId]);
-
-                if ($commission > 0) {
-                    $adminId = $db->query("SELECT user_id FROM User WHERE role = 'admin' ORDER BY user_id LIMIT 1")->fetchColumn();
-                    if ($adminId) {
-                        $updateBalance->execute(['amount' => $commission, 'id' => $adminId]);
-                        $insertTxn->execute(['user_id' => $adminId, 'amount' => $commission, 'type' => 'Credit', 'booking_id' => $bookingId]);
+                if ($newStatus === 'Completed') {
+                    // Non-slot booking: settle on its own amount (platform 10%, tutor 90%).
+                    $commission = round($amount * self::COMMISSION_RATE, 2);
+                    $tutorNet = round($amount - $commission, 2);
+                    if ((int) $booking['is_paid'] !== 1) {
+                        $updateBalance->execute(['amount' => -$amount, 'id' => $booking['learner_id']]);
+                        $insertTxn->execute(['user_id' => $booking['learner_id'], 'amount' => $amount, 'type' => 'Debit', 'booking_id' => $bookingId]);
+                        $db->prepare('UPDATE Booking SET is_paid = 1 WHERE booking_id = :id')->execute(['id' => $bookingId]);
                     }
+                    $updateBalance->execute(['amount' => $tutorNet, 'id' => $booking['tutor_id']]);
+                    $insertTxn->execute(['user_id' => $booking['tutor_id'], 'amount' => $tutorNet, 'type' => 'Credit', 'booking_id' => $bookingId]);
+                    if ($commission > 0) {
+                        $adminId = $db->query("SELECT user_id FROM User WHERE role = 'admin' ORDER BY user_id LIMIT 1")->fetchColumn();
+                        if ($adminId) {
+                            $updateBalance->execute(['amount' => $commission, 'id' => $adminId]);
+                            $insertTxn->execute(['user_id' => $adminId, 'amount' => $commission, 'type' => 'Credit', 'booking_id' => $bookingId]);
+                        }
+                    }
+                } elseif ($newStatus === 'Cancelled' && (int) $booking['is_paid'] === 1) {
+                    // Refund a prepaid booking that's being declined/cancelled.
+                    $updateBalance->execute(['amount' => $amount, 'id' => $booking['learner_id']]);
+                    $insertTxn->execute(['user_id' => $booking['learner_id'], 'amount' => $amount, 'type' => 'Credit', 'booking_id' => $bookingId]);
+                    $db->prepare('UPDATE Booking SET is_paid = 0 WHERE booking_id = :id')->execute(['id' => $bookingId]);
+                    $refunded = true;
                 }
-            } elseif ($newStatus === 'Cancelled' && (int) $booking['is_paid'] === 1) {
-                // Refund a prepaid booking that's being cancelled/declined.
-                $updateBalance->execute(['amount' => $amount, 'id' => $booking['learner_id']]);
-                $insertTxn->execute(['user_id' => $booking['learner_id'], 'amount' => $amount, 'type' => 'Credit', 'booking_id' => $bookingId]);
-                $db->prepare('UPDATE Booking SET is_paid = 0 WHERE booking_id = :id')->execute(['id' => $bookingId]);
-                $refunded = true;
             }
 
             $db->commit();
@@ -394,28 +420,121 @@ class BookingController
             return $this->json($response, ['error' => 'Could not update booking status.'], 500);
         }
 
-        // Notify the learner about the tutor's decision (booking notification).
-        $verb = ['Accepted' => 'accepted', 'Cancelled' => 'declined/cancelled', 'Completed' => 'marked completed'][$newStatus] ?? strtolower($newStatus);
-        \App\Controllers\MessageController::notify(
-            $db, (int) $booking['tutor_id'], (int) $booking['learner_id'],
-            "Your session booking was $verb by the tutor."
-            . ($refunded ? ' Your prepayment of RM' . number_format((float) $booking['total_amount'], 2) . ' has been refunded to your wallet.' : '')
-        );
-
-        // After a session completes, schedule a review reminder for ~1 day
-        // later (people reflect before reviewing). The Review button itself
-        // is available immediately once the class time has ended.
-        if ($newStatus === 'Completed') {
+        if ($groupResult !== null) {
+            // Group completion: tell every attendee their final price + any
+            // refund, and close out anyone whose request was never approved.
             $remindAt = date('Y-m-d H:i:s', time() + 86400);
+            foreach ($groupResult['completed'] as $c) {
+                $msg = 'Your group class is complete. Final price: RM' . number_format($c['final'], 2) . '.';
+                if ($c['refund'] > 0) {
+                    $msg .= ' As the class filled up, RM' . number_format($c['refund'], 2) . ' was refunded to your wallet.';
+                }
+                \App\Controllers\MessageController::notify($db, (int) $booking['tutor_id'], $c['learner_id'], $msg);
+                \App\Controllers\MessageController::notify(
+                    $db, (int) $booking['tutor_id'], $c['learner_id'],
+                    'How was your recent session? Leave a quick review in My Classes.',
+                    'booking', $remindAt
+                );
+            }
+            foreach ($groupResult['cancelled'] as $c) {
+                \App\Controllers\MessageController::notify(
+                    $db, (int) $booking['tutor_id'], $c['learner_id'],
+                    'The session ended before your request was approved, so it was closed and RM' . number_format($c['refund'], 2) . ' refunded to your wallet.'
+                );
+            }
+        } else {
+            // Single booking: notify the learner of the tutor's decision.
+            $verb = ['Accepted' => 'accepted', 'Cancelled' => 'declined/cancelled', 'Completed' => 'marked completed'][$newStatus] ?? strtolower($newStatus);
             \App\Controllers\MessageController::notify(
                 $db, (int) $booking['tutor_id'], (int) $booking['learner_id'],
-                'How was your recent session? Leave a quick review in My Classes.',
-                'booking', $remindAt
+                "Your session booking was $verb by the tutor."
+                . ($refunded ? ' Your prepayment of RM' . number_format((float) $booking['total_amount'], 2) . ' has been refunded to your wallet.' : '')
             );
+            if ($newStatus === 'Completed') {
+                $remindAt = date('Y-m-d H:i:s', time() + 86400);
+                \App\Controllers\MessageController::notify(
+                    $db, (int) $booking['tutor_id'], (int) $booking['learner_id'],
+                    'How was your recent session? Leave a quick review in My Classes.',
+                    'booking', $remindAt
+                );
+            }
         }
 
         $updated = $this->fetchBookingById($db, $bookingId);
         return $this->json($response, ['data' => $updated], 200);
+    }
+
+    /**
+     * Complete an entire group slot at once. Every Accepted booking is
+     * equalised to the final (lowest) price — the price drops RM1 per extra
+     * attendee down to the RM10/hr floor — overpayments are refunded, and the
+     * tutor is paid 90% / platform 10% on that final price. Any still-Pending
+     * requests are closed and fully refunded. Returns per-learner outcomes
+     * so the caller can send notifications after the transaction commits.
+     */
+    private function completeGroupSlot(\PDO $db, int $availabilityId): array
+    {
+        $stmt = $db->prepare('SELECT tutor_id, base_price, start_time, end_time FROM TutorAvailability WHERE availability_id = :id');
+        $stmt->execute(['id' => $availabilityId]);
+        $slot = $stmt->fetch();
+        $tutorId = (int) $slot['tutor_id'];
+        $duration = (int) max(1, round((strtotime($slot['end_time']) - strtotime($slot['start_time'])) / 3600));
+
+        // Final price is based on how many students actually attended (Accepted).
+        $stmt = $db->prepare("SELECT booking_id, learner_id, total_amount FROM Booking WHERE availability_id = :id AND status = 'Accepted'");
+        $stmt->execute(['id' => $availabilityId]);
+        $attendees = $stmt->fetchAll();
+
+        $finalCount = count($attendees);
+        $finalHourly = max(self::MIN_HOURLY, (float) $slot['base_price'] - max(0, $finalCount - 1));
+        $finalTotal = round($finalHourly * $duration, 2);
+        $commission = round($finalTotal * self::COMMISSION_RATE, 2);
+        $tutorNet = round($finalTotal - $commission, 2);
+        $adminId = $db->query("SELECT user_id FROM User WHERE role = 'admin' ORDER BY user_id LIMIT 1")->fetchColumn();
+
+        $updateBalance = $db->prepare('UPDATE User SET wallet_balance = wallet_balance + :amount WHERE user_id = :id');
+        $insertTxn = $db->prepare('INSERT INTO WalletTransaction (user_id, amount, type, booking_id) VALUES (:user_id, :amount, :type, :booking_id)');
+        $completeBooking = $db->prepare("UPDATE Booking SET status = 'Completed', total_amount = :amt WHERE booking_id = :id");
+
+        $completed = [];
+        foreach ($attendees as $a) {
+            $bookingId = (int) $a['booking_id'];
+            $learnerId = (int) $a['learner_id'];
+            $charged = (float) $a['total_amount'];
+            $refund = round($charged - $finalTotal, 2);
+
+            // Refund the overpayment (everyone paid at booking; final is lowest).
+            if ($refund > 0.001) {
+                $updateBalance->execute(['amount' => $refund, 'id' => $learnerId]);
+                $insertTxn->execute(['user_id' => $learnerId, 'amount' => $refund, 'type' => 'Credit', 'booking_id' => $bookingId]);
+            }
+            // Pay the tutor (90%) and the platform (10%) on the final price.
+            $updateBalance->execute(['amount' => $tutorNet, 'id' => $tutorId]);
+            $insertTxn->execute(['user_id' => $tutorId, 'amount' => $tutorNet, 'type' => 'Credit', 'booking_id' => $bookingId]);
+            if ($commission > 0 && $adminId) {
+                $updateBalance->execute(['amount' => $commission, 'id' => $adminId]);
+                $insertTxn->execute(['user_id' => $adminId, 'amount' => $commission, 'type' => 'Credit', 'booking_id' => $bookingId]);
+            }
+            $completeBooking->execute(['amt' => $finalTotal, 'id' => $bookingId]);
+            $completed[] = ['learner_id' => $learnerId, 'final' => $finalTotal, 'refund' => max(0.0, $refund)];
+        }
+
+        // Close + fully refund any requests that never got approved.
+        $stmt = $db->prepare("SELECT booking_id, learner_id, total_amount FROM Booking WHERE availability_id = :id AND status = 'Pending'");
+        $stmt->execute(['id' => $availabilityId]);
+        $cancelBooking = $db->prepare("UPDATE Booking SET status = 'Cancelled', is_paid = 0 WHERE booking_id = :id");
+        $cancelled = [];
+        foreach ($stmt->fetchAll() as $p) {
+            $bookingId = (int) $p['booking_id'];
+            $learnerId = (int) $p['learner_id'];
+            $amt = (float) $p['total_amount'];
+            $updateBalance->execute(['amount' => $amt, 'id' => $learnerId]);
+            $insertTxn->execute(['user_id' => $learnerId, 'amount' => $amt, 'type' => 'Credit', 'booking_id' => $bookingId]);
+            $cancelBooking->execute(['id' => $bookingId]);
+            $cancelled[] = ['learner_id' => $learnerId, 'refund' => $amt];
+        }
+
+        return ['tutor_id' => $tutorId, 'completed' => $completed, 'cancelled' => $cancelled];
     }
 
     /**

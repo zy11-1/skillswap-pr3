@@ -56,6 +56,8 @@ $app->post('/api/tutor/availability', [TutorController::class, 'addAvailability'
     ->add($jwtMiddleware);
 $app->patch('/api/tutor/availability/{id}', [TutorController::class, 'updateAvailability'])
     ->add($jwtMiddleware);
+$app->patch('/api/tutor/availability/{id}/syllabus', [TutorController::class, 'setSyllabus'])
+    ->add($jwtMiddleware);
 $app->post('/api/tutor/availability/{id}/cancel', [TutorController::class, 'cancelAvailability'])
     ->add($jwtMiddleware);
 $app->delete('/api/tutor/availability/{id}', [TutorController::class, 'deleteAvailability'])

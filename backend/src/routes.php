@@ -102,6 +102,7 @@ $app->delete('/api/tutor/availability/{id}', [TutorController::class, 'deleteAva
         $group->post('', [BookingController::class, 'create']);
         $group->patch('/{id}/status', [BookingController::class, 'updateStatus']);
         $group->patch('/{id}/recording', [BookingController::class, 'setRecording']);
+        $group->patch('/{id}/time-change', [BookingController::class, 'respondTimeChange']);
     })->add($jwtMiddleware);
 
     // ---------------------------------------------------------------

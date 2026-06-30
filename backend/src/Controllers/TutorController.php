@@ -522,6 +522,15 @@ class TutorController
             return $this->json($response, ['error' => 'You can only edit your own availability.'], 403);
         }
 
+        // The time (= the class length) can be edited, but NEVER the day.
+        $startTime = array_key_exists('start_time', $data) ? (string) $data['start_time'] : (string) $slot['start_time'];
+        $endTime = array_key_exists('end_time', $data) ? (string) $data['end_time'] : (string) $slot['end_time'];
+        if (substr($endTime, 0, 5) <= substr($startTime, 0, 5)) {
+            return $this->json($response, ['error' => 'End time must be after start time.'], 422);
+        }
+        $timeChanged = substr($startTime, 0, 5) !== substr((string) $slot['start_time'], 0, 5)
+            || substr($endTime, 0, 5) !== substr((string) $slot['end_time'], 0, 5);
+
         $capacity = array_key_exists('capacity', $data) ? (int) $data['capacity'] : (int) $slot['capacity'];
         $mode = array_key_exists('mode', $data) ? (($data['mode'] === 'Online') ? 'Online' : 'Physical') : $slot['mode'];
         $meetingLink = array_key_exists('meeting_link', $data) ? trim((string) $data['meeting_link']) : (string) ($slot['meeting_link'] ?? '');
@@ -563,7 +572,8 @@ class TutorController
 
         $stmt = $db->prepare(
             'UPDATE TutorAvailability
-             SET capacity = :capacity, base_price = :base_price, mode = :mode, meeting_link = :meeting_link,
+             SET capacity = :capacity, base_price = :base_price, start_time = :start_time, end_time = :end_time,
+                 mode = :mode, meeting_link = :meeting_link,
                  location = :location, resources = :resources, outcomes = :outcomes,
                  visibility = :visibility, share_token = :share_token
              WHERE availability_id = :id'
@@ -571,6 +581,8 @@ class TutorController
         $stmt->execute([
             'capacity' => $capacity,
             'base_price' => $basePrice,
+            'start_time' => $startTime,
+            'end_time' => $endTime,
             'mode' => $mode,
             'meeting_link' => $meetingLink === '' ? null : $meetingLink,
             'location' => $location === '' ? null : $location,
@@ -580,6 +592,23 @@ class TutorController
             'share_token' => $shareToken,
             'id' => $availabilityId,
         ]);
+
+        // Changing the time on a slot that already has students asks each of
+        // them to accept or reject the new time (reject = full refund). The
+        // day never changes, so only the start/end can move.
+        if ($timeChanged && $seatsTaken > 0) {
+            $db->prepare("UPDATE Booking SET change_pending = 1 WHERE availability_id = :id AND status IN ('Pending','Accepted')")
+               ->execute(['id' => $availabilityId]);
+            $newWhen = $slot['available_date'] . ' ' . substr($startTime, 0, 5) . '–' . substr($endTime, 0, 5);
+            $stmt = $db->prepare("SELECT DISTINCT learner_id FROM Booking WHERE availability_id = :id AND status IN ('Pending','Accepted')");
+            $stmt->execute(['id' => $availabilityId]);
+            foreach ($stmt->fetchAll() as $row) {
+                \App\Controllers\MessageController::notify(
+                    $db, $userId, (int) $row['learner_id'],
+                    "Your tutor changed your session time to $newWhen. Open My Classes to accept (price adjusts if it's shorter) or reject for a full refund."
+                );
+            }
+        }
 
         // If the materials/details (resources, outcomes, link, location) changed
         // on a slot that already has students, notify each of them.

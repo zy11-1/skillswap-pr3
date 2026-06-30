@@ -21,6 +21,11 @@ const confirmed = ref(false)
 const confirming = ref(false)   // prepay confirmation step
 
 const selectedSlot = computed(() => slots.value.find((s) => s.availability_id === selectedSlotId.value))
+// The first student to book an "open" slot chooses its topic; for an already
+// locked slot the topic is fixed and this is ignored.
+const selectedTopicId = ref(props.offering.skill_id)
+const isFirstBooker = computed(() => selectedSlot.value && !selectedSlot.value.topic)
+const topicChoices = computed(() => props.tutor.offerings || [])
 
 async function loadSlots() {
   loadingSlots.value = true
@@ -65,7 +70,8 @@ async function submitBooking() {
   try {
     await bookingStore.createBooking({
       availability_id: selectedSlotId.value,
-      skill_id: props.offering.skill_id
+      // First booker sets the topic; otherwise the locked topic is used server-side.
+      skill_id: isFirstBooker.value ? Number(selectedTopicId.value) : props.offering.skill_id
     })
     confirmed.value = true
     setTimeout(() => emit('booked'), 1500)
@@ -165,6 +171,17 @@ onMounted(loadSlots)
             extra student (min RM10/hr) — you’ll be <strong>refunded the difference</strong> if it fills up.
             Every booking waits for the tutor's approval.
           </p>
+
+          <!-- First booker picks the topic for an open slot -->
+          <div v-if="isFirstBooker && topicChoices.length" class="mb-3">
+            <label class="form-label small">You're first — pick the topic for this class</label>
+            <select v-model="selectedTopicId" class="form-select form-select-sm">
+              <option v-for="o in topicChoices" :key="o.skill_id" :value="o.skill_id">
+                {{ o.skill_name }}<template v-if="o.level"> ({{ o.level }})</template>
+              </option>
+            </select>
+            <p class="text-muted mt-1" style="font-size:.7rem">Once set, the topic is locked for everyone who joins.</p>
+          </div>
 
           <!-- Prepay confirmation -->
           <div v-if="confirming && selectedSlot" class="alert alert-warning py-2 small">

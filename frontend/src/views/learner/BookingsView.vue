@@ -57,6 +57,24 @@ async function respond(bookingId, status) {
   }
 }
 
+// Learner responds to a tutor's time change (accept = keep at new time, refund
+// if shorter; reject = full refund + cancel).
+async function respondTime(b, accept) {
+  updatingId.value = b.booking_id
+  try {
+    await api.respondTimeChange(b.booking_id, accept)
+    await load()
+  } catch (err) {
+    alert(err.message || 'Could not respond to the time change.')
+  } finally {
+    updatingId.value = null
+  }
+}
+function newTimeLabel(b) {
+  if (!b.slot_date) return ''
+  return `${b.slot_date} ${(b.slot_start || '').slice(0, 5)}–${(b.slot_end || '').slice(0, 5)}`
+}
+
 const recordingDrafts = ref({})
 const savingRecording = ref(null)
 async function saveRecording(b) {
@@ -216,9 +234,18 @@ function formatDate(dateStr) {
                 <span v-else class="text-muted small">—</span>
               </template>
 
-              <!-- LEARNER: review once the session has ended -->
+              <!-- LEARNER: respond to a time change, else review once ended -->
               <template v-else>
-                <template v-if="canReview(b)">
+                <div v-if="b.change_pending" class="time-change-box">
+                  <div class="small text-warning mb-1">
+                    <i class="bi bi-clock-history me-1"></i>Tutor moved this to <strong>{{ newTimeLabel(b) }}</strong>
+                  </div>
+                  <div class="d-flex gap-1">
+                    <button class="btn btn-success btn-sm" :disabled="updatingId === b.booking_id" @click="respondTime(b, true)">Accept</button>
+                    <button class="btn btn-outline-danger btn-sm" :disabled="updatingId === b.booking_id" @click="respondTime(b, false)">Reject &amp; refund</button>
+                  </div>
+                </div>
+                <template v-else-if="canReview(b)">
                   <div v-if="b.review_id" class="d-flex align-items-center gap-2">
                     <span class="text-warning small">
                       <i v-for="n in 5" :key="n" class="bi" :class="n <= b.review_rating ? 'bi-star-fill' : 'bi-star'"></i>

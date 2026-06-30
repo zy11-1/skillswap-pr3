@@ -76,6 +76,15 @@ async updateAvailability(availabilityId, data) {
   }
 },
 
+async respondTimeChange(bookingId, accept) {
+  try {
+    const res = await http.patch(`/api/bookings/${bookingId}/time-change`, { accept })
+    return res.data
+  } catch (err) {
+    throw unwrapError(err)
+  }
+},
+
 async setSyllabus(availabilityId, topicsCovered) {
   try {
     const res = await http.patch(`/api/tutor/availability/${availabilityId}/syllabus`, { topics_covered: topicsCovered })

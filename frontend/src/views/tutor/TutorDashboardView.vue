@@ -232,6 +232,9 @@ function startEdit(slot) {
   editForm.value = {
     capacity: slot.capacity,
     base_price: slot.base_price,
+    available_date: slot.available_date,
+    start_time: slot.start_time ? slot.start_time.slice(0, 5) : '',
+    end_time: slot.end_time ? slot.end_time.slice(0, 5) : '',
     mode: slot.mode || 'Physical',
     meeting_link: slot.meeting_link || '',
     location: slot.location || '',
@@ -276,6 +279,8 @@ async function saveEdit(slot) {
     await api.updateAvailability(slot.availability_id, {
       capacity: Number(editForm.value.capacity),
       base_price: Number(editForm.value.base_price),
+      start_time: editForm.value.start_time,
+      end_time: editForm.value.end_time,
       mode: editForm.value.mode,
       meeting_link: editForm.value.meeting_link,
       location: editForm.value.location,
@@ -571,7 +576,9 @@ onMounted(() => {
                 <strong>{{ slot.available_date }}</strong>
                 {{ slot.start_time.slice(0,5) }} – {{ slot.end_time.slice(0,5) }}
                 <span class="badge ms-2 bg-info text-dark">
-                  <i class="bi bi-people-fill me-1"></i>{{ slot.seats_taken }}/{{ slot.capacity }} seats
+                  <i class="bi bi-people-fill me-1"></i>
+                  {{ slot.seats_taken }} {{ slot.seats_taken === 1 ? 'student' : 'students' }} enrolled
+                  <span class="fw-normal">· {{ slot.capacity }} seat cap</span>
                 </span>
                 <span class="badge ms-1" :class="slot.mode === 'Online' ? 'bg-primary' : 'bg-success'">
                   <i :class="slot.mode === 'Online' ? 'bi bi-camera-video' : 'bi bi-geo-alt'" class="me-1"></i>
@@ -643,9 +650,28 @@ onMounted(() => {
               <i class="bi bi-card-text me-1"></i><strong>Covering:</strong> {{ slot.topics_covered }}
             </div>
 
-            <!-- Inline editor (time is fixed; everything else editable) -->
+            <!-- Inline editor (the day is fixed; the time/length can change) -->
             <div v-if="editingId === slot.availability_id" class="mt-2 border-top pt-2">
               <div class="row g-2">
+                <div class="col-md-3">
+                  <label class="form-label small">Day <span class="text-muted">(can't change)</span></label>
+                  <input :value="editForm.available_date" type="date" disabled class="form-control form-control-sm" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small">Start</label>
+                  <input v-model="editForm.start_time" type="time" class="form-control form-control-sm" />
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label small">End</label>
+                  <input v-model="editForm.end_time" type="time" class="form-control form-control-sm" />
+                </div>
+                <div v-if="slot.seats_taken > 0" class="col-12">
+                  <p class="text-warning small mb-1">
+                    <i class="bi bi-exclamation-triangle me-1"></i>
+                    Changing the time will ask the {{ slot.seats_taken }} booked student(s) to accept or reject
+                    (reject = full refund; a shorter class refunds the difference).
+                  </p>
+                </div>
                 <div class="col-md-3">
                   <label class="form-label small">Seats</label>
                   <input v-model.number="editForm.capacity" type="number" min="1" class="form-control form-control-sm" />

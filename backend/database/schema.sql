@@ -77,6 +77,7 @@ CREATE TABLE IF NOT EXISTS Booking (
     recording_url   VARCHAR(255) NULL,
     availability_id INT NULL,
     is_paid         TINYINT(1) NOT NULL DEFAULT 0,
+    change_pending  TINYINT(1) NOT NULL DEFAULT 0,  -- tutor changed the time; student must accept/reject
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_booking_learner FOREIGN KEY (learner_id) REFERENCES User(user_id) ON DELETE CASCADE,
     CONSTRAINT fk_booking_tutor FOREIGN KEY (tutor_id) REFERENCES User(user_id) ON DELETE CASCADE,

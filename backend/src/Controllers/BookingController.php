@@ -44,7 +44,8 @@ class BookingController
                    r.review_id, r.rating AS review_rating, r.comment AS review_comment,
                    ta.mode AS slot_mode, ta.meeting_link, ta.location AS slot_location,
                    ta.resources AS slot_resources, ta.outcomes AS slot_outcomes, ta.capacity AS slot_capacity,
-                   ta.topics_covered AS slot_topics, ta.base_price AS slot_base_price
+                   ta.topics_covered AS slot_topics, ta.base_price AS slot_base_price,
+                   ta.available_date AS slot_date, ta.start_time AS slot_start, ta.end_time AS slot_end
             FROM Booking b
             JOIN User learner ON learner.user_id = b.learner_id
             JOIN User tutor ON tutor.user_id = b.tutor_id
@@ -60,6 +61,7 @@ class BookingController
         foreach ($bookings as &$b) {
             $b['total_amount'] = (float) $b['total_amount'];
             $b['duration'] = (int) $b['duration'];
+            $b['change_pending'] = (int) ($b['change_pending'] ?? 0) === 1;
             $b['review_id'] = $b['review_id'] !== null ? (int) $b['review_id'] : null;
             $b['review_rating'] = $b['review_rating'] !== null ? (int) $b['review_rating'] : null;
         }
@@ -579,6 +581,84 @@ class BookingController
                 'A session recording is now available — watch it from My Classes.'
             );
         }
+
+        return $this->json($response, ['data' => $this->fetchBookingById($db, $bookingId)], 200);
+    }
+
+    /**
+     * PATCH /api/bookings/{id}/time-change (requires JWT, the booking's learner)
+     * Body: { accept: bool }
+     * Responds to a tutor's time change. Reject = full refund + cancel. Accept =
+     * keep the booking at the new time; if it got shorter the price is re-based
+     * (refund the difference); if it got longer the original price is kept.
+     */
+    public function respondTimeChange(Request $request, Response $response, array $args): Response
+    {
+        $bookingId = (int) $args['id'];
+        $userId = (int) $request->getAttribute('user_id');
+        $accept = !empty(((array) $request->getParsedBody())['accept']);
+
+        $db = Database::getConnection();
+        $booking = $this->fetchBookingById($db, $bookingId);
+        if (!$booking) {
+            return $this->json($response, ['error' => 'Booking not found.'], 404);
+        }
+        if ((int) $booking['learner_id'] !== $userId) {
+            return $this->json($response, ['error' => 'You can only respond to your own booking.'], 403);
+        }
+        if ((int) ($booking['change_pending'] ?? 0) !== 1) {
+            return $this->json($response, ['error' => 'There is no pending time change on this booking.'], 422);
+        }
+
+        $tutorId = (int) $booking['tutor_id'];
+        $oldTotal = (float) $booking['total_amount'];
+        $refunded = 0.0;
+
+        $db->beginTransaction();
+        try {
+            $updateBalance = $db->prepare('UPDATE User SET wallet_balance = wallet_balance + :amount WHERE user_id = :id');
+            $insertTxn = $db->prepare('INSERT INTO WalletTransaction (user_id, amount, type, booking_id) VALUES (:user_id, :amount, :type, :booking_id)');
+
+            if (!$accept) {
+                // Reject: full refund + cancel the booking.
+                $updateBalance->execute(['amount' => $oldTotal, 'id' => $userId]);
+                $insertTxn->execute(['user_id' => $userId, 'amount' => $oldTotal, 'type' => 'Credit', 'booking_id' => $bookingId]);
+                $db->prepare("UPDATE Booking SET status = 'Cancelled', is_paid = 0, change_pending = 0 WHERE booking_id = :id")
+                   ->execute(['id' => $bookingId]);
+                $refunded = $oldTotal;
+            } else {
+                // Accept: re-base to the new duration. Never charge more — if the
+                // class got longer the student keeps their original price.
+                $stmt = $db->prepare('SELECT available_date, start_time, end_time FROM TutorAvailability WHERE availability_id = :id');
+                $stmt->execute(['id' => $booking['availability_id']]);
+                $slot = $stmt->fetch();
+                $newDuration = (int) max(1, round((strtotime($slot['end_time']) - strtotime($slot['start_time'])) / 3600));
+                $oldDuration = (int) max(1, (int) $booking['duration']);
+                $hourly = $oldTotal / $oldDuration;
+                $newTotal = min($oldTotal, round($hourly * $newDuration, 2));
+                $refund = round($oldTotal - $newTotal, 2);
+                if ($refund > 0.001) {
+                    $updateBalance->execute(['amount' => $refund, 'id' => $userId]);
+                    $insertTxn->execute(['user_id' => $userId, 'amount' => $refund, 'type' => 'Credit', 'booking_id' => $bookingId]);
+                    $refunded = $refund;
+                }
+                $newBookingDate = date('Y-m-d H:i:s', strtotime($slot['available_date'] . ' ' . $slot['start_time']));
+                $db->prepare('UPDATE Booking SET duration = :d, total_amount = :t, booking_date = :bd, change_pending = 0 WHERE booking_id = :id')
+                   ->execute(['d' => $newDuration, 't' => $newTotal, 'bd' => $newBookingDate, 'id' => $bookingId]);
+            }
+            $db->commit();
+        } catch (\Throwable $e) {
+            $db->rollBack();
+            error_log('Time-change response failed: ' . $e->getMessage());
+            return $this->json($response, ['error' => 'Could not process your response.'], 500);
+        }
+
+        \App\Controllers\MessageController::notify(
+            $db, $userId, $tutorId,
+            $accept
+                ? 'A student accepted your new session time.' . ($refunded > 0 ? ' They were refunded RM' . number_format($refunded, 2) . ' for the shorter session.' : '')
+                : 'A student rejected your new session time and was refunded RM' . number_format($refunded, 2) . '.'
+        );
 
         return $this->json($response, ['data' => $this->fetchBookingById($db, $bookingId)], 200);
     }

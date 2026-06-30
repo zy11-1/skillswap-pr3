@@ -17,4 +17,5 @@ ALTER TABLE TutorAvailability
   DROP COLUMN payment_timing;
 
 ALTER TABLE Booking
-  DROP COLUMN payment_timing;
+  DROP COLUMN payment_timing,
+  ADD COLUMN change_pending TINYINT(1) NOT NULL DEFAULT 0 AFTER is_paid;

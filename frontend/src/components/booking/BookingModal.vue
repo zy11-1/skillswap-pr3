@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useBookingStore } from '@/stores/booking'
 import { api } from '@/data/api'
 
@@ -19,6 +19,10 @@ const submitting = ref(false)
 const error = ref('')
 const confirmed = ref(false)
 const wasAutoAccepted = ref(true)
+const confirmingPay = ref(false)   // prepay confirmation step
+
+const selectedSlot = computed(() => slots.value.find((s) => s.availability_id === selectedSlotId.value))
+const isPrepay = computed(() => selectedSlot.value?.payment_timing === 'prepay')
 
 async function loadSlots() {
   loadingSlots.value = true
@@ -36,6 +40,21 @@ async function loadSlots() {
 function selectSlot(slot) {
   if (slot.is_full) return
   selectedSlotId.value = slot.availability_id
+  confirmingPay.value = false
+}
+
+// Prepay slots show a confirmation step before charging the wallet.
+function onBookClick() {
+  error.value = ''
+  if (!selectedSlotId.value) {
+    error.value = 'Please choose an available slot.'
+    return
+  }
+  if (isPrepay.value && !confirmingPay.value) {
+    confirmingPay.value = true
+    return
+  }
+  submitBooking()
 }
 
 function slotHours(slot) {
@@ -161,14 +180,27 @@ onMounted(loadSlots)
             wait for the tutor to accept — you'll get a notification either way.
           </p>
 
+          <!-- Prepay confirmation step -->
+          <div v-if="confirmingPay && selectedSlot" class="alert alert-warning py-2 small">
+            <i class="bi bi-wallet2 me-1"></i>
+            This is a <strong>prepay</strong> session. <strong>RM{{ slotPrice(selectedSlot) }}</strong>
+            will be deducted from your wallet now (refunded if the tutor declines).
+          </div>
+
           <button
             type="button"
             class="btn btn-primary w-100"
             :disabled="submitting || !selectedSlotId"
-            @click="submitBooking"
+            @click="onBookClick"
           >
             <span v-if="submitting" class="spinner-border spinner-border-sm me-2"></span>
-            {{ submitting ? 'Booking…' : 'Book this slot' }}
+            <template v-if="submitting">Booking…</template>
+            <template v-else-if="confirmingPay">Confirm &amp; pay RM{{ slotPrice(selectedSlot) }}</template>
+            <template v-else-if="isPrepay">Book — pay RM{{ slotPrice(selectedSlot) }} now</template>
+            <template v-else>Book this slot</template>
+          </button>
+          <button v-if="confirmingPay" type="button" class="btn btn-link btn-sm w-100" @click="confirmingPay = false">
+            Back
           </button>
         </template>
       </div>

@@ -329,6 +329,8 @@ class TutorController
             'resources' => $slot['resources'],
             'visibility' => $slot['visibility'],
             'share_token' => $token,
+            'auto_accept' => ((int) $slot['auto_accept']) === 1,
+            'payment_timing' => $slot['payment_timing'],
             'seats_taken' => $seatsTaken,
             'seats_left' => max(0, $capacity - $seatsTaken - $reservedOthers),
             'type' => $capacity > 1 ? 'Group' : 'Solo',

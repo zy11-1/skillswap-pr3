@@ -343,6 +343,15 @@ async deleteAvailability(availabilityId) {
     return res.data
   },
 
+  async getAdminMeritDetail(requestId) {
+    try {
+      const res = await http.get(`/api/admin/merits/${requestId}`)
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
   async reviewMerit(requestId, status) {
     try {
       const res = await http.patch(`/api/admin/merits/${requestId}`, { status })

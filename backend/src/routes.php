@@ -164,6 +164,7 @@ $app->delete('/api/tutor/availability/{id}', [TutorController::class, 'deleteAva
         $group->patch('/verifications/requests/{id}', [AdminController::class, 'reviewVerification']);
         // Merits
         $group->get('/merits', [MeritController::class, 'adminList']);
+        $group->get('/merits/{id}', [MeritController::class, 'adminDetail']);
         $group->patch('/merits/{id}', [MeritController::class, 'adminReview']);
         // Content moderation
         $group->get('/reviews', [AdminController::class, 'listReviews']);

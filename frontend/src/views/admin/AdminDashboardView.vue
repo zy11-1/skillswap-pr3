@@ -128,6 +128,10 @@ async function toggleSuspend(user) {
 async function saveRole(user) {
   const newRole = roleEditing.value[user.user_id]
   if (newRole === user.role) return
+  if (!confirm(`Change ${user.name}'s role to "${newRole}"?`)) {
+    roleEditing.value[user.user_id] = user.role   // revert dropdown
+    return
+  }
   updatingUserId.value = user.user_id
   try {
     await api.updateAdminUser(user.user_id, { role: newRole })
@@ -325,16 +329,12 @@ async function resolveDispute(bookingId, resolution) {
                           class="form-select form-select-sm"
                           style="width: auto"
                           :disabled="updatingUserId === u.user_id"
+                          @change="saveRole(u)"
                         >
                           <option value="learner">learner</option>
                           <option value="tutor">tutor</option>
                         </select>
-                        <button
-                          v-if="roleEditing[u.user_id] !== u.role"
-                          class="btn btn-sm btn-outline-primary"
-                          :disabled="updatingUserId === u.user_id"
-                          @click="saveRole(u)"
-                        >Save</button>
+                        <span v-if="updatingUserId === u.user_id" class="spinner-border spinner-border-sm text-secondary"></span>
                       </div>
                     </template>
                   </td>

@@ -1,13 +1,53 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from './stores/auth'
+import { api } from './data/api'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
 
 const defaultAvatar = 'https://i.pravatar.cc/150?img=1'
+
+// ---- Notifications (bell) ----
+const notifOpen = ref(false)
+const unreadCount = ref(0)
+const notifItems = ref([])
+let notifTimer = null
+
+async function loadNotifications() {
+  if (!auth.isLoggedIn) {
+    unreadCount.value = 0
+    notifItems.value = []
+    return
+  }
+  try {
+    const res = await api.getNotifications()
+    unreadCount.value = res.data.unread_count
+    notifItems.value = res.data.items
+  } catch {
+    /* ignore transient errors */
+  }
+}
+
+function toggleNotif() {
+  notifOpen.value = !notifOpen.value
+  if (notifOpen.value) loadNotifications()
+}
+
+function openMessages() {
+  notifOpen.value = false
+  router.push('/messages')
+}
+
+onMounted(() => {
+  loadNotifications()
+  notifTimer = setInterval(loadNotifications, 20000)
+})
+onUnmounted(() => clearInterval(notifTimer))
+// Refresh the count whenever the page changes (e.g. after reading messages).
+watch(() => route.fullPath, loadNotifications)
 
 const showNavbar = computed(() => auth.isLoggedIn && !route.meta.guestOnly)
 
@@ -90,6 +130,44 @@ function handleLogout() {
         </div>
 
         <div class="d-flex align-items-center text-white">
+          <!-- Notification bell -->
+          <div class="position-relative me-3">
+            <button class="btn btn-sm btn-outline-light position-relative" @click="toggleNotif" aria-label="Notifications">
+              <i class="bi bi-bell"></i>
+              <span
+                v-if="unreadCount"
+                class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
+              >
+                {{ unreadCount > 9 ? '9+' : unreadCount }}
+              </span>
+            </button>
+            <template v-if="notifOpen">
+              <div class="notif-backdrop" @click="notifOpen = false"></div>
+              <div class="notif-panel card shadow">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center py-2">
+                  <span class="fw-bold small text-dark">Notifications</span>
+                  <button class="btn btn-sm btn-link p-0" @click="openMessages">Open messages</button>
+                </div>
+                <div class="notif-list">
+                  <button
+                    v-for="n in notifItems"
+                    :key="n.message_id"
+                    class="list-group-item list-group-item-action text-start border-0 border-bottom"
+                    :class="{ 'bg-light': !n.is_read }"
+                    @click="openMessages"
+                  >
+                    <div class="small text-dark">
+                      <strong>{{ n.sender_name }}</strong>
+                      <span v-if="!n.is_read" class="badge bg-primary-ss ms-1">new</span>
+                    </div>
+                    <div class="small text-muted text-truncate">{{ n.body }}</div>
+                  </button>
+                  <p v-if="!notifItems.length" class="text-muted small p-3 mb-0">No notifications yet.</p>
+                </div>
+              </div>
+            </template>
+          </div>
+
           <img
             :src="auth.user?.photo_url || defaultAvatar"
             class="rounded-circle me-2"
@@ -109,3 +187,26 @@ function handleLogout() {
   <router-view />
   </div>
 </template>
+
+<style scoped>
+.notif-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1055;
+}
+.notif-panel {
+  position: absolute;
+  right: 0;
+  top: 120%;
+  width: 320px;
+  z-index: 1060;
+  border: none;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.notif-list {
+  max-height: 360px;
+  overflow-y: auto;
+  background: #fff;
+}
+</style>

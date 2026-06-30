@@ -81,8 +81,42 @@ class MessageController
              ORDER BY sent_at ASC'
         );
         $stmt->execute(['me1' => $me, 'other1' => $other, 'other2' => $other, 'me2' => $me]);
+        $messages = $stmt->fetchAll();
 
-        return $this->json($response, ['data' => $stmt->fetchAll()], 200);
+        // Opening a thread marks the other person's messages to me as read.
+        $mark = $db->prepare("UPDATE Message SET is_read = 1 WHERE receiver_id = :me AND sender_id = :other AND is_read = 0");
+        $mark->execute(['me' => $me, 'other' => $other]);
+
+        return $this->json($response, ['data' => $messages], 200);
+    }
+
+    /**
+     * GET /api/notifications (requires JWT)
+     * Unread count + the most recent messages received, for the bell panel.
+     */
+    public function notifications(Request $request, Response $response): Response
+    {
+        $me = (int) $request->getAttribute('user_id');
+        $db = Database::getConnection();
+
+        $stmt = $db->prepare('SELECT COUNT(*) FROM Message WHERE receiver_id = :me AND is_read = 0');
+        $stmt->execute(['me' => $me]);
+        $unread = (int) $stmt->fetchColumn();
+
+        $stmt = $db->prepare(
+            'SELECT m.message_id, m.sender_id, m.body, m.is_read, m.sent_at, u.name AS sender_name
+             FROM Message m JOIN User u ON u.user_id = m.sender_id
+             WHERE m.receiver_id = :me
+             ORDER BY m.sent_at DESC LIMIT 10'
+        );
+        $stmt->execute(['me' => $me]);
+        $items = $stmt->fetchAll();
+        foreach ($items as &$i) {
+            $i['is_read'] = (int) $i['is_read'];
+        }
+        unset($i);
+
+        return $this->json($response, ['data' => ['unread_count' => $unread, 'items' => $items]], 200);
     }
 
     /**

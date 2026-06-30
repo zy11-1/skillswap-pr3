@@ -170,9 +170,10 @@ class MeritController
                ->execute(['id' => $mr['user_id']]);
         }
 
-        // Let the tutor know the outcome.
+        // Let the tutor know the outcome (sent from the admin who reviewed it).
+        $adminId = (int) $request->getAttribute('user_id');
         \App\Controllers\MessageController::notify(
-            $db, (int) $mr['user_id'], (int) $mr['user_id'],
+            $db, $adminId, (int) $mr['user_id'],
             "Your university merit transfer application was $status.",
             'system'
         );

@@ -19,7 +19,6 @@ const activeTab = ref('overview')
 // ── per-action busy flags ─────────────────────────────────────────────────────
 const verifyingId      = ref(null)
 const reviewingId      = ref(null)
-const meritReviewingId = ref(null)
 const updatingUserId   = ref(null)
 const deletingUserId   = ref(null)
 const deletingReviewId = ref(null)
@@ -96,16 +95,57 @@ async function reviewDoc(requestId, status) {
   }
 }
 
-// ── merit reviews ─────────────────────────────────────────────────────────────
-async function reviewMerit(requestId, status) {
-  meritReviewingId.value = requestId
+// ── merit detail modal ────────────────────────────────────────────────────────
+const viewingMerit        = ref(null)
+const viewingMeritLoading = ref(false)
+
+async function viewMerit(r) {
+  viewingMerit.value        = { ...r, reviews: [] }
+  viewingMeritLoading.value = true
   try {
-    await api.reviewMerit(requestId, status)
-    meritRequests.value = meritRequests.value.filter(r => r.merit_request_id !== requestId)
+    const res = await api.getAdminMeritDetail(r.merit_request_id)
+    viewingMerit.value = res.data
+  } catch (err) {
+    alert(err.message || 'Could not load application detail.')
+    viewingMerit.value = null
   } finally {
-    meritReviewingId.value = null
+    viewingMeritLoading.value = false
   }
 }
+
+function forwardMailto(detail) {
+  const reviewLines = (detail.reviews || []).slice(0, 5)
+    .map(r => `  - ${r.learner_name}: ${'★'.repeat(r.rating)} — "${r.comment || '—'}"`)
+    .join('\n')
+  const body = [
+    `Dear Merit Coordinator,`,
+    ``,
+    `Please find below the UTM Merit Transfer application for:`,
+    `  Name   : ${detail.name}`,
+    `  Email  : ${detail.email}`,
+    `  Faculty: ${detail.faculty}`,
+    ``,
+    `PERFORMANCE SNAPSHOT (at time of application)`,
+    `  Classes Completed : ${detail.classes_completed}`,
+    `  Students Helped   : ${detail.students_helped}`,
+    `  Average Rating    : ${detail.avg_rating} / 5.0`,
+    `  Review Count      : ${detail.review_count}`,
+    ``,
+    `RECENT STUDENT REVIEWS`,
+    reviewLines || `  No reviews on record.`,
+    ``,
+    detail.result_link ? `ACADEMIC RESULT / TRANSCRIPT\n  ${detail.result_link}` : '',
+    ``,
+    `This application has been reviewed on SkillSwap and is forwarded for your approval.`,
+    ``,
+    `Regards,`,
+    `SkillSwap Admin`,
+  ].filter(l => l !== undefined).join('\n')
+
+  const subject = `Merit Transfer Application — ${detail.name}`
+  return `mailto:merit@utm.my?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+}
+
 
 // ── user management ───────────────────────────────────────────────────────────
 async function toggleSuspend(user) {
@@ -411,11 +451,8 @@ async function resolveDispute(bookingId, resolution) {
                   <td>{{ r.avg_rating }}★</td>
                   <td>{{ r.review_count }}</td>
                   <td class="text-end">
-                    <button class="btn btn-success btn-sm me-1" :disabled="meritReviewingId === r.merit_request_id" @click="reviewMerit(r.merit_request_id, 'Approved')">
-                      <i class="bi bi-check-lg"></i> Approve
-                    </button>
-                    <button class="btn btn-outline-danger btn-sm" :disabled="meritReviewingId === r.merit_request_id" @click="reviewMerit(r.merit_request_id, 'Rejected')">
-                      Reject
+                    <button class="btn btn-outline-primary btn-sm" @click="viewMerit(r)">
+                      <i class="bi bi-eye me-1"></i>View
                     </button>
                   </td>
                 </tr>
@@ -569,4 +606,97 @@ async function resolveDispute(bookingId, resolution) {
 
     </template>
   </div>
+
+  <!-- ══════════════════════════════════ MERIT DETAIL MODAL -->
+  <div v-if="viewingMerit" class="modal d-block" tabindex="-1" style="background:rgba(0,0,0,.5)" @click.self="viewingMerit = null">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+      <div class="modal-content">
+
+        <div class="modal-header">
+          <h5 class="modal-title fw-bold">Merit Application — {{ viewingMerit.name }}</h5>
+          <button type="button" class="btn-close" @click="viewingMerit = null"></button>
+        </div>
+
+        <div class="modal-body">
+          <div v-if="viewingMeritLoading" class="text-center py-5">
+            <div class="spinner-border text-primary-ss"></div>
+          </div>
+          <template v-else>
+
+            <!-- Student info -->
+            <div class="mb-3 d-flex align-items-center gap-3">
+              <img v-if="viewingMerit.photo_url" :src="viewingMerit.photo_url" class="rounded-circle" width="56" height="56" alt="">
+              <div>
+                <div class="fw-semibold">{{ viewingMerit.name }}</div>
+                <div class="small text-muted">{{ viewingMerit.email }}</div>
+                <div class="small text-muted">{{ viewingMerit.faculty }}{{ viewingMerit.year_of_study ? ' · ' + viewingMerit.year_of_study : '' }}</div>
+              </div>
+            </div>
+
+            <!-- Performance snapshot -->
+            <h6 class="fw-bold mb-2">Performance Snapshot <span class="fw-normal text-muted small">(at time of application)</span></h6>
+            <div class="row g-2 mb-4">
+              <div class="col-6 col-md-3">
+                <div class="card border-0 bg-light text-center p-2">
+                  <p class="small text-muted mb-0">Classes</p>
+                  <h4 class="fw-bold mb-0">{{ viewingMerit.classes_completed }}</h4>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="card border-0 bg-light text-center p-2">
+                  <p class="small text-muted mb-0">Students</p>
+                  <h4 class="fw-bold mb-0">{{ viewingMerit.students_helped }}</h4>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="card border-0 bg-light text-center p-2">
+                  <p class="small text-muted mb-0">Avg Rating</p>
+                  <h4 class="fw-bold mb-0 text-warning">{{ viewingMerit.avg_rating }}★</h4>
+                </div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="card border-0 bg-light text-center p-2">
+                  <p class="small text-muted mb-0">Reviews</p>
+                  <h4 class="fw-bold mb-0">{{ viewingMerit.review_count }}</h4>
+                </div>
+              </div>
+            </div>
+
+            <!-- Academic result link -->
+            <div v-if="viewingMerit.result_link" class="mb-4">
+              <h6 class="fw-bold mb-2">Academic Result / Transcript</h6>
+              <a :href="viewingMerit.result_link" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-file-earmark-text me-1"></i>View Result
+              </a>
+            </div>
+
+            <!-- Student reviews -->
+            <h6 class="fw-bold mb-2">Student Reviews ({{ viewingMerit.reviews?.length ?? 0 }} shown)</h6>
+            <div v-if="viewingMerit.reviews?.length" class="list-group list-group-flush border rounded">
+              <div v-for="rev in viewingMerit.reviews" :key="rev.review_id" class="list-group-item">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <span class="fw-semibold small">{{ rev.learner_name }}</span>
+                  <span class="text-warning small">
+                    <i v-for="n in 5" :key="n" class="bi" :class="n <= rev.rating ? 'bi-star-fill' : 'bi-star'"></i>
+                  </span>
+                </div>
+                <p class="small text-muted mb-0">{{ rev.comment || '—' }}</p>
+              </div>
+            </div>
+            <p v-else class="text-muted small">No reviews on record for this tutor.</p>
+
+          </template>
+        </div>
+
+        <div class="modal-footer">
+          <a :href="forwardMailto(viewingMerit)" class="btn btn-primary">
+            <i class="bi bi-envelope me-1"></i>Forward to Approver
+          </a>
+          <button class="btn btn-outline-secondary" @click="viewingMerit = null">Close</button>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
 </template>

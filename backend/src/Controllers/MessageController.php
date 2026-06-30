@@ -101,14 +101,15 @@ class MessageController
         $me = (int) $request->getAttribute('user_id');
         $db = Database::getConnection();
 
-        $stmt = $db->prepare('SELECT COUNT(*) FROM Message WHERE receiver_id = :me AND is_read = 0');
+        // Delayed notifications (visible_at in the future) stay hidden until due.
+        $stmt = $db->prepare('SELECT COUNT(*) FROM Message WHERE receiver_id = :me AND is_read = 0 AND (visible_at IS NULL OR visible_at <= NOW())');
         $stmt->execute(['me' => $me]);
         $unread = (int) $stmt->fetchColumn();
 
         $stmt = $db->prepare(
             'SELECT m.message_id, m.sender_id, m.body, m.is_read, m.category, m.sent_at, u.name AS sender_name
              FROM Message m JOIN User u ON u.user_id = m.sender_id
-             WHERE m.receiver_id = :me
+             WHERE m.receiver_id = :me AND (m.visible_at IS NULL OR m.visible_at <= NOW())
              ORDER BY m.sent_at DESC LIMIT 30'
         );
         $stmt->execute(['me' => $me]);
@@ -138,12 +139,12 @@ class MessageController
      * Helper other controllers use to drop a categorised notification into a
      * user's bell (booking events, material updates, etc.).
      */
-    public static function notify(\PDO $db, int $senderId, int $receiverId, string $body, string $category = 'booking'): void
+    public static function notify(\PDO $db, int $senderId, int $receiverId, string $body, string $category = 'booking', ?string $visibleAt = null): void
     {
         $stmt = $db->prepare(
-            'INSERT INTO Message (sender_id, receiver_id, body, category) VALUES (:s, :r, :b, :c)'
+            'INSERT INTO Message (sender_id, receiver_id, body, category, visible_at) VALUES (:s, :r, :b, :c, :v)'
         );
-        $stmt->execute(['s' => $senderId, 'r' => $receiverId, 'b' => $body, 'c' => $category]);
+        $stmt->execute(['s' => $senderId, 'r' => $receiverId, 'b' => $body, 'c' => $category, 'v' => $visibleAt]);
     }
 
     /**

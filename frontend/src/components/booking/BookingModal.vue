@@ -18,6 +18,7 @@ const selectedSlotId = ref(null)
 const submitting = ref(false)
 const error = ref('')
 const confirmed = ref(false)
+const wasAutoAccepted = ref(true)
 
 async function loadSlots() {
   loadingSlots.value = true
@@ -60,14 +61,14 @@ async function submitBooking() {
 
   submitting.value = true
   try {
-    // Slot-based booking: the backend derives time/duration from the slot
-    // and auto-accepts if seats remain.
-    await bookingStore.createBooking({
+    const res = await bookingStore.createBooking({
       availability_id: selectedSlotId.value,
       skill_id: props.offering.skill_id
     })
+    // Auto-accept slots confirm instantly; otherwise it's a pending request.
+    wasAutoAccepted.value = res?.auto_accepted !== false
     confirmed.value = true
-    setTimeout(() => emit('booked'), 900)
+    setTimeout(() => emit('booked'), 1300)
   } catch (err) {
     error.value = err.message || 'Booking failed.'
   } finally {
@@ -92,7 +93,9 @@ onMounted(loadSlots)
         </p>
 
         <div v-if="confirmed" class="alert alert-success">
-          <i class="bi bi-check-circle-fill me-2"></i>Booked &amp; confirmed! Redirecting…
+          <i class="bi bi-check-circle-fill me-2"></i>
+          <template v-if="wasAutoAccepted">Booked &amp; confirmed! Redirecting…</template>
+          <template v-else>Request sent — the tutor will approve it. You'll be notified. Redirecting…</template>
         </div>
 
         <template v-else>
@@ -133,6 +136,10 @@ onMounted(loadSlots)
                   <span v-if="slot.i_have_priority" class="badge bg-warning text-dark ms-1">
                     <i class="bi bi-star-fill me-1"></i>Reserved for you
                   </span>
+                  <span class="ms-1" :class="slot.auto_accept ? 'text-success' : 'text-muted'">
+                    · <i :class="slot.auto_accept ? 'bi bi-lightning-charge' : 'bi bi-hourglass-split'"></i>
+                    {{ slot.auto_accept ? 'Instant' : 'Needs approval' }}
+                  </span>
                 </span>
                 <span v-if="slot.mode === 'Physical' && slot.location" class="small d-block text-muted">
                   <i class="bi bi-geo-alt me-1"></i>{{ slot.location }}
@@ -146,8 +153,9 @@ onMounted(loadSlots)
           </div>
 
           <p class="text-muted small">
-            <i class="bi bi-lightning-charge me-1"></i>
-            Booking a slot with free seats is <strong>confirmed instantly</strong>.
+            <i class="bi bi-info-circle me-1"></i>
+            <strong>Instant</strong> slots confirm immediately; <strong>Needs approval</strong> slots
+            wait for the tutor to accept — you'll get a notification either way.
           </p>
 
           <button

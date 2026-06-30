@@ -241,10 +241,14 @@ class BookingController
                    ->execute(['pid' => $myPriorityId]);
             }
 
-            // Under capacity -> auto-accept.
+            // Auto-accept slots confirm instantly; otherwise the booking waits
+            // as Pending for the tutor to accept or decline.
+            $autoAccept = (int) ($slot['auto_accept'] ?? 1) === 1;
+            $status = $autoAccept ? 'Accepted' : 'Pending';
+
             $stmt = $db->prepare(
                 "INSERT INTO Booking (learner_id, tutor_id, skill_id, booking_date, duration, status, total_amount, availability_id)
-                 VALUES (:learner_id, :tutor_id, :skill_id, :booking_date, :duration, 'Accepted', :total_amount, :availability_id)"
+                 VALUES (:learner_id, :tutor_id, :skill_id, :booking_date, :duration, :status, :total_amount, :availability_id)"
             );
             $stmt->execute([
                 'learner_id' => $learnerId,
@@ -252,6 +256,7 @@ class BookingController
                 'skill_id' => $skillId,
                 'booking_date' => date('Y-m-d H:i:s', strtotime($bookingDate)),
                 'duration' => $duration,
+                'status' => $status,
                 'total_amount' => $totalAmount,
                 'availability_id' => $availabilityId,
             ]);
@@ -264,14 +269,16 @@ class BookingController
             return $this->json($response, ['error' => 'Could not complete the booking.'], 500);
         }
 
-        // Let the tutor know a seat was taken (booking notification).
+        // Notify the tutor: instant booking vs a request awaiting approval.
         \App\Controllers\MessageController::notify(
             $db, $learnerId, $tutorId,
-            'A student booked one of your sessions.'
+            $autoAccept
+                ? 'A student booked one of your sessions.'
+                : 'New booking request awaiting your approval in My Classes.'
         );
 
         $booking = $this->fetchBookingById($db, $bookingId);
-        $booking['auto_accepted'] = true;
+        $booking['auto_accepted'] = $autoAccept;
         return $this->json($response, ['data' => $booking], 201);
     }
 

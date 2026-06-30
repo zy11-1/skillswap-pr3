@@ -248,6 +248,12 @@ async deleteAvailability(availabilityId) {
     }
   },
 
+  // ---------- NOTIFICATIONS ----------
+  async getNotifications() {
+    const res = await http.get('/api/notifications')
+    return res.data
+  },
+
   // ---------- MESSAGES ----------
   async getConversations() {
     const res = await http.get('/api/messages')

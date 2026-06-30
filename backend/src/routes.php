@@ -101,6 +101,9 @@ $app->delete('/api/tutor/availability/{id}', [TutorController::class, 'deleteAva
         $group->get('/{userId}', [MessageController::class, 'thread']);
     })->add($jwtMiddleware);
 
+    // Notification bell (unread messages: chat, cancellations, priority offers)
+    $app->get('/api/notifications', [MessageController::class, 'notifications'])->add($jwtMiddleware);
+
     // ---------------------------------------------------------------
     // Verification (tutor uploads a document; admin approves it)
     // ---------------------------------------------------------------

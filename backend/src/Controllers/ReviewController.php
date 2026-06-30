@@ -44,8 +44,9 @@ class ReviewController
 
         $db = Database::getConnection();
 
-        // The booking must exist, belong to this learner, and be Completed.
-        $stmt = $db->prepare('SELECT learner_id, status FROM Booking WHERE booking_id = :id');
+        // The booking must exist, belong to this learner, and the session
+        // must already be over (you can review once the class time has ended).
+        $stmt = $db->prepare('SELECT learner_id, status, booking_date, duration FROM Booking WHERE booking_id = :id');
         $stmt->execute(['id' => $bookingId]);
         $booking = $stmt->fetch();
 
@@ -55,8 +56,12 @@ class ReviewController
         if ((int) $booking['learner_id'] !== $userId) {
             return $this->json($response, ['error' => 'You can only review your own bookings.'], 403);
         }
-        if ($booking['status'] !== 'Completed') {
-            return $this->json($response, ['error' => 'You can only review a session once it is Completed.'], 422);
+        if (in_array($booking['status'], ['Pending', 'Cancelled'], true)) {
+            return $this->json($response, ['error' => 'This session was not held, so it cannot be reviewed.'], 422);
+        }
+        $endTs = strtotime($booking['booking_date']) + ((int) $booking['duration'] * 3600);
+        if ($endTs > time()) {
+            return $this->json($response, ['error' => 'You can review once the session has ended.'], 422);
         }
 
         // One review per booking (DB also enforces this via the UNIQUE

@@ -375,6 +375,18 @@ class BookingController
             "Your session booking was $verb by the tutor."
         );
 
+        // After a session completes, schedule a review reminder for ~1 day
+        // later (people reflect before reviewing). The Review button itself
+        // is available immediately once the class time has ended.
+        if ($newStatus === 'Completed') {
+            $remindAt = date('Y-m-d H:i:s', time() + 86400);
+            \App\Controllers\MessageController::notify(
+                $db, (int) $booking['tutor_id'], (int) $booking['learner_id'],
+                'How was your recent session? Leave a quick review in My Classes.',
+                'booking', $remindAt
+            );
+        }
+
         $updated = $this->fetchBookingById($db, $bookingId);
         return $this->json($response, ['data' => $updated], 200);
     }

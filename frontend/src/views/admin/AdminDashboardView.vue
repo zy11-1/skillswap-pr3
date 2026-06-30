@@ -406,7 +406,7 @@ async function resolveDispute(bookingId, resolution) {
         </div>
         <p v-else class="text-muted small mb-4">No document requests awaiting review.</p>
 
-        <h6 class="fw-bold mb-3">Pending Tutor Verifications (no document yet)</h6>
+        <h6 class="fw-bold mb-3">Pending Tutor Verifications</h6>
         <div v-if="pendingTutors.length" class="card border-0 shadow-sm">
           <div class="table-responsive">
             <table class="table mb-0 align-middle">

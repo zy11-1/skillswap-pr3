@@ -1,37 +1,52 @@
 // src/stores/booking.js
 import { defineStore } from 'pinia'
 import { api } from '@/data/api'
-import { useAuthStore } from '@/stores/auth'
 
+// Bookings have two distinct meanings depending on the user's role on each
+// booking: "sessions I booked" (as learner) and "sessions I teach" (as tutor).
+// We keep them in separate collections so the two datasets can never clobber
+// each other, and so a view always binds to a fixed, unambiguous role.
 export const useBookingStore = defineStore('booking', {
   state: () => ({
-    bookings: [],
-    loading: false
+    learnerBookings: [],   // sessions I booked (?as=learner)
+    tutorBookings: [],     // sessions I teach (?as=tutor)
+    loadingLearner: false,
+    loadingTutor: false
   }),
 
   actions: {
-    async fetchBookings() {
-      this.loading = true
+    async fetchAsLearner() {
+      this.loadingLearner = true
       try {
-        // Fetch bookings for whichever mode the user is currently in.
-        const mode = useAuthStore().activeMode
-        const res = await api.getBookings(mode)
-        this.bookings = res.data
+        const res = await api.getBookings('learner')
+        this.learnerBookings = res.data || []
       } finally {
-        this.loading = false
+        this.loadingLearner = false
+      }
+    },
+
+    async fetchAsTutor() {
+      this.loadingTutor = true
+      try {
+        const res = await api.getBookings('tutor')
+        this.tutorBookings = res.data || []
+      } finally {
+        this.loadingTutor = false
       }
     },
 
     async createBooking(payload) {
       const res = await api.createBooking(payload)
-      this.bookings.push(res.data)
+      // Booking is always a learner action, so only the learner list grows.
+      this.learnerBookings.push(res.data)
       return res.data
     },
 
     async updateStatus(bookingId, status) {
       const res = await api.updateBookingStatus(bookingId, status)
-      const idx = this.bookings.findIndex((b) => b.booking_id === bookingId)
-      if (idx !== -1) this.bookings[idx] = { ...this.bookings[idx], ...res.data }
+      // Accept/Complete happens from the teaching (tutor) list.
+      const idx = this.tutorBookings.findIndex((b) => b.booking_id === bookingId)
+      if (idx !== -1) this.tutorBookings[idx] = { ...this.tutorBookings[idx], ...res.data }
       return res.data
     }
   }

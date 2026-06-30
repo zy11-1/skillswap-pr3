@@ -36,9 +36,13 @@ function toggleNotif() {
   if (notifOpen.value) loadNotifications()
 }
 
-function openMessages() {
+function openMessages(item) {
   notifOpen.value = false
-  router.push('/messages')
+  // Open the relevant thread directly (the clicked item, or the latest).
+  const target = item || notifItems.value[0]
+  router.push(target
+    ? { name: 'messages', query: { to: target.sender_id, name: target.sender_name } }
+    : { name: 'messages' })
 }
 
 onMounted(() => {
@@ -146,7 +150,7 @@ function handleLogout() {
               <div class="notif-panel card shadow">
                 <div class="card-header bg-white d-flex justify-content-between align-items-center py-2">
                   <span class="fw-bold small text-dark">Notifications</span>
-                  <button class="btn btn-sm btn-link p-0" @click="openMessages">Open messages</button>
+                  <button class="btn btn-sm btn-link p-0" @click="openMessages()">Open messages</button>
                 </div>
                 <div class="notif-list">
                   <button
@@ -154,7 +158,7 @@ function handleLogout() {
                     :key="n.message_id"
                     class="list-group-item list-group-item-action text-start border-0 border-bottom"
                     :class="{ 'bg-light': !n.is_read }"
-                    @click="openMessages"
+                    @click="openMessages(n)"
                   >
                     <div class="small text-dark">
                       <strong>{{ n.sender_name }}</strong>

@@ -33,10 +33,15 @@ async function openThread(user) {
 
 async function refreshThread() {
   if (!activeUser.value) return
+  const previousCount = messages.value.length
   const res = await api.getThread(activeUser.value.user_id)
   messages.value = res.data || []
-  await nextTick()
-  threadEnd.value?.scrollIntoView({ behavior: 'smooth' })
+  // Only auto-scroll when something new arrived, so polling doesn't yank
+  // the view while the user is reading earlier messages.
+  if (messages.value.length !== previousCount) {
+    await nextTick()
+    threadEnd.value?.scrollIntoView({ behavior: 'smooth' })
+  }
 }
 
 async function send() {
@@ -61,8 +66,10 @@ onMounted(async () => {
   if (route.query.to) {
     openThread({ user_id: Number(route.query.to), name: route.query.name || 'Tutor' })
   }
-  // Poll the open thread every 4s (async chat, no WebSocket needed).
+  // Poll BOTH the conversation list (so new chats/notifications appear) and
+  // the open thread every 4s (async chat, no WebSocket needed).
   pollTimer = setInterval(() => {
+    loadConversations()
     if (activeUser.value) refreshThread()
   }, 4000)
 })
@@ -109,11 +116,11 @@ onUnmounted(() => clearInterval(pollTimer))
                 v-for="m in messages"
                 :key="m.message_id"
                 class="d-flex mb-2"
-                :class="m.sender_id === auth.user.user_id ? 'justify-content-end' : 'justify-content-start'"
+                :class="Number(m.sender_id) === Number(auth.user?.user_id) ? 'justify-content-end' : 'justify-content-start'"
               >
                 <div
                   class="chat-bubble px-3 py-2 rounded"
-                  :class="m.sender_id === auth.user.user_id ? 'bg-primary text-white' : 'bg-light'"
+                  :class="Number(m.sender_id) === Number(auth.user?.user_id) ? 'bg-primary text-white' : 'bg-light'"
                 >
                   {{ m.body }}
                 </div>

@@ -303,7 +303,7 @@ async function removeSlot(id) {
 }
 
 onMounted(() => {
-  bookingStore.fetchBookings()
+  bookingStore.fetchAsTutor()
   loadAvailability()
   loadSkills()
   loadVerification()
@@ -328,7 +328,7 @@ async function saveRecording(booking) {
   savingRecording.value = booking.booking_id
   try {
     await api.setBookingRecording(booking.booking_id, url)
-    await bookingStore.fetchBookings()
+    await bookingStore.fetchAsTutor()
   } catch (err) {
     alert(err.message || 'Could not save recording link.')
   } finally {
@@ -363,12 +363,12 @@ function formatDate(dateStr) {
     </div>
 
     <!-- Bookings -->
-    <div v-if="bookingStore.loading" class="text-center py-5">
+    <div v-if="bookingStore.loadingTutor" class="text-center py-5">
       <div class="spinner-border text-primary-ss"></div>
     </div>
 
-    <div v-else-if="bookingStore.bookings.length" class="row g-3 mb-4">
-      <div v-for="b in bookingStore.bookings" :key="b.booking_id" class="col-md-6">
+    <div v-else-if="bookingStore.tutorBookings.length" class="row g-3 mb-4">
+      <div v-for="b in bookingStore.tutorBookings" :key="b.booking_id" class="col-md-6">
         <div class="card border-0 shadow-sm h-100">
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-start mb-2">

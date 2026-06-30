@@ -21,7 +21,21 @@ function blankSlot() {
     meeting_link: '',
     location: '',
     resources: '',
-    outcomes: ''
+    outcomes: '',
+    visibility: 'Public'  // 'Public' (browsable) or 'Private' (invite link only)
+  }
+}
+
+function inviteLink(slot) {
+  return `${window.location.origin}/slot/${slot.share_token}`
+}
+
+async function copyInvite(slot) {
+  try {
+    await navigator.clipboard.writeText(inviteLink(slot))
+    alert('Invite link copied! Share it with the students you want to join this private session.')
+  } catch {
+    prompt('Copy this invite link:', inviteLink(slot))
   }
 }
 const newSlot = ref(blankSlot())
@@ -190,7 +204,8 @@ async function addSlot() {
       meeting_link: newSlot.value.meeting_link,
       location: newSlot.value.location,
       resources: newSlot.value.resources,
-      outcomes: newSlot.value.outcomes
+      outcomes: newSlot.value.outcomes,
+      visibility: newSlot.value.visibility
     })
     // Reload so the new slot shows its capacity/seats from the server.
     await loadAvailability()
@@ -212,7 +227,8 @@ function startEdit(slot) {
     meeting_link: slot.meeting_link || '',
     location: slot.location || '',
     resources: slot.resources || '',
-    outcomes: slot.outcomes || ''
+    outcomes: slot.outcomes || '',
+    visibility: slot.visibility || 'Public'
   }
 }
 
@@ -234,7 +250,8 @@ async function saveEdit(slot) {
       meeting_link: editForm.value.meeting_link,
       location: editForm.value.location,
       resources: editForm.value.resources,
-      outcomes: editForm.value.outcomes
+      outcomes: editForm.value.outcomes,
+      visibility: editForm.value.visibility
     })
     editingId.value = null
     await loadAvailability()
@@ -623,8 +640,18 @@ function formatDate(dateStr) {
                   <i :class="slot.mode === 'Online' ? 'bi bi-camera-video' : 'bi bi-geo-alt'" class="me-1"></i>
                   {{ slot.mode }}
                 </span>
+                <span v-if="slot.visibility === 'Private'" class="badge bg-dark ms-1">
+                  <i class="bi bi-lock-fill me-1"></i>Private
+                </span>
               </span>
               <span class="d-flex gap-2">
+                <button
+                  v-if="slot.visibility === 'Private' && slot.share_token"
+                  class="btn btn-sm btn-dark"
+                  @click="copyInvite(slot)"
+                >
+                  <i class="bi bi-link-45deg me-1"></i>Copy invite link
+                </button>
                 <button class="btn btn-sm btn-outline-secondary" @click="startEdit(slot)">
                   <i class="bi bi-pencil me-1"></i>Edit
                 </button>
@@ -676,6 +703,13 @@ function formatDate(dateStr) {
                 <div class="col-md-6">
                   <label class="form-label small">Learning outcomes</label>
                   <input v-model="editForm.outcomes" type="text" class="form-control form-control-sm" placeholder="What the student will gain" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small">Visibility</label>
+                  <select v-model="editForm.visibility" class="form-select form-select-sm">
+                    <option value="Public">Public (anyone can find &amp; book)</option>
+                    <option value="Private">Private (invite link only)</option>
+                  </select>
                 </div>
               </div>
               <div class="mt-2 d-flex gap-2">
@@ -735,14 +769,27 @@ function formatDate(dateStr) {
             <label class="form-label small">Resources / sources (optional)</label>
             <input v-model="newSlot.resources" type="text" class="form-control form-control-sm" placeholder="Links or notes you'll share" />
           </div>
-          <div class="col-md-6">
+          <div class="col-md-4">
             <label class="form-label small">Learning outcomes (optional)</label>
             <input v-model="newSlot.outcomes" type="text" class="form-control form-control-sm" placeholder="What the student will gain" />
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small">Visibility</label>
+            <select v-model="newSlot.visibility" class="form-select form-select-sm">
+              <option value="Public">Public (anyone can find &amp; book)</option>
+              <option value="Private">Private (invite link only)</option>
+            </select>
           </div>
           <div class="col-md-2">
             <button class="btn btn-primary btn-sm w-100" :disabled="saving" @click="addSlot">
               {{ saving ? '...' : 'Add slot' }}
             </button>
+          </div>
+          <div v-if="newSlot.visibility === 'Private'" class="col-12">
+            <p class="text-muted small mb-0">
+              <i class="bi bi-info-circle me-1"></i>Private slots won't show in the marketplace —
+              after adding, use <strong>Copy invite link</strong> to share it.
+            </p>
           </div>
         </div>
       </div>

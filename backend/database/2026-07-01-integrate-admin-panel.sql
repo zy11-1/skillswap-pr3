@@ -26,6 +26,12 @@ ALTER TABLE TutorAvailability
     DROP COLUMN auto_accept,
     DROP COLUMN payment_timing;
 
+-- --- User: admin can suspend/activate an account -------------------------
+-- (Tarin's admin code + AuthController read User.is_active but her PR never
+--  added the column.)
+ALTER TABLE User
+    ADD COLUMN is_active TINYINT(1) NOT NULL DEFAULT 1;
+
 -- --- Booking: time-change consent + admin dispute mediation --------------
 ALTER TABLE Booking
     ADD COLUMN change_pending TINYINT(1) NOT NULL DEFAULT 0,

@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS User (
     bio             TEXT NULL,
     wallet_balance  DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     is_verified     TINYINT(1) NOT NULL DEFAULT 0,
+    is_active       TINYINT(1) NOT NULL DEFAULT 1,  -- admin can suspend (0) / activate (1) an account
     merit_points    INT NOT NULL DEFAULT 0,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;

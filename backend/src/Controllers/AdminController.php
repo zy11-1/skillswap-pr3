@@ -272,7 +272,7 @@ class AdminController
         $stmt = $db->query(
             "SELECT b.booking_id, b.dispute_reason, b.dispute_status,
                     b.status AS booking_status, b.total_amount, b.booking_date,
-                    b.is_paid, b.payment_timing,
+                    b.is_paid,
                     learner.user_id AS learner_id, learner.name AS learner_name, learner.email AS learner_email,
                     tutor.user_id   AS tutor_id,   tutor.name   AS tutor_name,
                     s.name AS skill_name
@@ -419,7 +419,7 @@ class AdminController
         $db   = Database::getConnection();
         $stmt = $db->query(
             "SELECT b.booking_id, b.status, b.booking_date, b.total_amount,
-                    b.payment_timing, b.is_paid, b.dispute_status, b.dispute_reason,
+                    b.is_paid, b.dispute_status, b.dispute_reason,
                     learner.name AS learner_name, tutor.name AS tutor_name, s.name AS skill_name
              FROM Booking b
              JOIN User  learner ON learner.user_id = b.learner_id

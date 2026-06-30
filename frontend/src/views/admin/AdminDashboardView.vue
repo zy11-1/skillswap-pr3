@@ -61,7 +61,7 @@ async function loadData() {
 onMounted(loadData)
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-function docUrl(path) { return apiBaseUrl + path }
+function docUrl(path) { return path.startsWith('http') ? path : apiBaseUrl + path }
 
 function formatDate(d) {
   return new Date(d).toLocaleString('en-MY', { dateStyle: 'medium', timeStyle: 'short' })

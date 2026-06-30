@@ -46,11 +46,6 @@ const filteredBookings = computed(() => {
   return list.value.filter((b) => b.status === statusFilter.value)
 })
 
-function slotType(b) {
-  if (!b.slot_capacity) return null
-  return b.slot_capacity > 1 ? 'Group' : 'Solo'
-}
-
 // A session is reviewable once its end time has passed (and it actually ran).
 function sessionEnded(b) {
   const end = new Date(b.booking_date).getTime() + (b.duration || 1) * 3600 * 1000
@@ -154,7 +149,77 @@ function formatDate(dateStr) {
       <div class="spinner-border text-primary-ss"></div>
     </div>
 
-    <div v-else-if="filteredBookings.length" class="table-responsive">
+    <div v-else-if="filteredBookings.length">
+      <!-- TUTOR view: roomy cards so each session's actions have space -->
+      <div v-if="auth.isTutorMode" class="d-flex flex-column gap-3">
+        <div v-for="b in filteredBookings" :key="b.booking_id" class="card border-0 shadow-sm tutor-class-card">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div>
+                <h6 class="mb-0 fw-bold"><i class="bi bi-person-circle me-1 text-primary-ss"></i>{{ b.learner_name }}</h6>
+                <span class="small text-muted">{{ b.skill_name }}</span>
+              </div>
+              <span :class="statusClass(b.status)">{{ b.status }}</span>
+            </div>
+            <div class="d-flex flex-wrap gap-3 small text-muted mb-3 align-items-center">
+              <span><i class="bi bi-clock me-1"></i>{{ formatDate(b.booking_date) }} · {{ b.duration }}h</span>
+              <span v-if="b.slot_mode" :class="b.slot_mode === 'Online' ? 'text-primary' : 'text-success'">
+                <i :class="b.slot_mode === 'Online' ? 'bi bi-camera-video' : 'bi bi-geo-alt'" class="me-1"></i>{{ b.slot_mode }}
+                <template v-if="b.slot_mode === 'Physical' && b.slot_location"> · {{ b.slot_location }}</template>
+              </span>
+              <span class="fw-semibold text-dark"><i class="bi bi-wallet2 me-1"></i>RM{{ Number(b.total_amount).toFixed(2) }}</span>
+              <a v-if="b.slot_mode === 'Online' && b.meeting_link" :href="b.meeting_link" target="_blank" rel="noopener">
+                <i class="bi bi-box-arrow-up-right me-1"></i>Join meeting
+              </a>
+              <button
+                v-if="b.status === 'Accepted' || b.status === 'Completed'"
+                class="btn btn-link btn-sm p-0"
+                title="Add to calendar (.ics)"
+                @click="downloadBookingIcs(b)"
+              ><i class="bi bi-calendar-plus me-1"></i>Add to calendar</button>
+            </div>
+
+            <!-- Lifecycle actions -->
+            <div v-if="b.status === 'Pending'" class="d-flex gap-2">
+              <button class="btn btn-success btn-sm" :disabled="updatingId === b.booking_id" @click="respond(b.booking_id, 'Accepted')">
+                <i class="bi bi-check-lg me-1"></i>Accept
+              </button>
+              <button class="btn btn-outline-danger btn-sm" :disabled="updatingId === b.booking_id" @click="respond(b.booking_id, 'Cancelled')">
+                <i class="bi bi-x-lg me-1"></i>Decline
+              </button>
+            </div>
+            <button
+              v-else-if="b.status === 'Accepted'"
+              class="btn btn-primary btn-sm"
+              :disabled="updatingId === b.booking_id"
+              @click="respond(b.booking_id, 'Completed')"
+            >
+              <i class="bi bi-flag me-1"></i>Mark completed
+            </button>
+            <div v-else-if="b.status === 'Completed'">
+              <label class="form-label small mb-1 text-muted">Session recording link (optional)</label>
+              <div class="input-group input-group-sm" style="max-width: 420px">
+                <input
+                  :value="recordingDrafts[b.booking_id] ?? b.recording_url ?? ''"
+                  type="url"
+                  class="form-control"
+                  placeholder="https://… (Zoom/Meet recording)"
+                  @input="recordingDrafts[b.booking_id] = $event.target.value"
+                />
+                <button class="btn btn-outline-primary" :disabled="savingRecording === b.booking_id" @click="saveRecording(b)">
+                  {{ savingRecording === b.booking_id ? '...' : 'Save' }}
+                </button>
+              </div>
+              <a v-if="b.recording_url" :href="b.recording_url" target="_blank" rel="noopener" class="small d-inline-block mt-1">
+                <i class="bi bi-camera-video me-1"></i>Watch current recording
+              </a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LEARNER view: compact table -->
+      <div v-else class="table-responsive">
       <table class="table align-middle bg-white shadow-sm rounded">
         <thead>
           <tr class="text-muted small">
@@ -172,9 +237,6 @@ function formatDate(dateStr) {
             <td>{{ auth.isTutorMode ? b.learner_name : b.tutor_name }}</td>
             <td>
               {{ b.skill_name }}
-              <span v-if="slotType(b)" class="badge ms-1" :class="slotType(b) === 'Group' ? 'bg-info text-dark' : 'bg-secondary'">
-                <i :class="slotType(b) === 'Group' ? 'bi bi-people-fill' : 'bi bi-person-fill'" class="me-1"></i>{{ slotType(b) }}
-              </span>
               <template v-if="b.slot_mode && b.status !== 'Cancelled'">
                 <span class="badge ms-1" :class="b.slot_mode === 'Online' ? 'bg-primary' : 'bg-success'">
                   <i :class="b.slot_mode === 'Online' ? 'bi bi-camera-video' : 'bi bi-geo-alt'" class="me-1"></i>{{ b.slot_mode }}
@@ -277,6 +339,7 @@ function formatDate(dateStr) {
           </tr>
         </tbody>
       </table>
+      </div>
     </div>
 
     <div v-else class="text-center py-5 text-muted">
@@ -298,3 +361,10 @@ function formatDate(dateStr) {
     />
   </div>
 </template>
+
+<style scoped>
+.tutor-class-card {
+  border-left: 4px solid var(--ss-primary) !important;
+  border-radius: 10px;
+}
+</style>

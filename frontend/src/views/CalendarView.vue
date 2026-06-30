@@ -1,6 +1,11 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { api } from '@/data/api'
+import { useAuthStore } from '@/stores/auth'
+
+const auth = useAuthStore()
+const router = useRouter()
 
 const bookings = ref([])
 const loading = ref(true)
@@ -86,6 +91,58 @@ function timeOf(b) {
 }
 
 const selectedSessions = computed(() => (selectedDay.value ? byDay.value[selectedDay.value] || [] : []))
+
+// Clicking a session jumps to My Classes, where it can be managed/reviewed.
+function openSession() {
+  router.push('/bookings')
+}
+
+// ---- Add a class straight from a calendar day (tutor only) ----
+const showAdd = ref(false)
+const addForm = ref({ start_time: '09:00', end_time: '11:00', base_price: 20, mode: 'Physical', location: '', meeting_link: '', visibility: 'Public' })
+const addError = ref('')
+const addingClass = ref(false)
+
+function isPast(dayKey) {
+  return dayKey < todayKey
+}
+
+function openAdd() {
+  addError.value = ''
+  addForm.value = { start_time: '09:00', end_time: '11:00', base_price: 20, mode: 'Physical', location: '', meeting_link: '', visibility: 'Public' }
+  showAdd.value = true
+}
+
+async function submitAdd() {
+  addError.value = ''
+  if (addForm.value.end_time <= addForm.value.start_time) {
+    addError.value = 'End time must be after start time.'
+    return
+  }
+  if (Number(addForm.value.base_price) < 10) {
+    addError.value = 'Base price must be at least RM10 per hour.'
+    return
+  }
+  addingClass.value = true
+  try {
+    await api.addAvailability({
+      available_date: selectedDay.value,
+      start_time: addForm.value.start_time,
+      end_time: addForm.value.end_time,
+      base_price: Number(addForm.value.base_price),
+      mode: addForm.value.mode,
+      location: addForm.value.location,
+      meeting_link: addForm.value.meeting_link,
+      visibility: addForm.value.visibility
+    })
+    showAdd.value = false
+    await load()
+  } catch (err) {
+    addError.value = err.message || 'Could not add the class.'
+  } finally {
+    addingClass.value = false
+  }
+}
 </script>
 
 <template>
@@ -97,6 +154,9 @@ const selectedSessions = computed(() => (selectedDay.value ? byDay.value[selecte
           Your full schedule —
           <span class="badge cal-teach text-dark"><i class="bi bi-easel me-1"></i>Teaching</span>
           <span class="badge cal-learn text-dark ms-1"><i class="bi bi-mortarboard me-1"></i>Learning</span>
+        </p>
+        <p class="text-muted mb-0 small mt-1">
+          <i class="bi bi-hand-index me-1"></i>Tap a day to see its sessions<template v-if="auth.isTutorMode"> or add a class</template>; tap a session to manage it.
         </p>
       </div>
       <div class="btn-group btn-group-sm">
@@ -129,7 +189,8 @@ const selectedSessions = computed(() => (selectedDay.value ? byDay.value[selecte
               :key="b.role + b.booking_id"
               class="cal-pill text-truncate"
               :class="b.role === 'tutor' ? 'cal-teach' : 'cal-learn'"
-              :title="(b.role === 'tutor' ? 'Teaching: ' : 'Learning: ') + b.skill_name"
+              :title="(b.role === 'tutor' ? 'Teaching: ' : 'Learning: ') + b.skill_name + ' — open in My Classes'"
+              @click.stop="openSession()"
             >
               {{ timeOf(b) }} {{ b.skill_name }}
             </div>
@@ -140,10 +201,24 @@ const selectedSessions = computed(() => (selectedDay.value ? byDay.value[selecte
     </div>
 
     <!-- Selected-day detail -->
-    <div v-if="selectedDay && selectedSessions.length" class="card border-0 shadow-sm mt-3">
-      <div class="card-header bg-white fw-bold">{{ selectedDay }}</div>
-      <div class="list-group list-group-flush">
-        <div v-for="b in selectedSessions" :key="b.role + b.booking_id" class="list-group-item d-flex justify-content-between align-items-center">
+    <div v-if="selectedDay" class="card border-0 shadow-sm mt-3">
+      <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <span class="fw-bold">{{ selectedDay }}</span>
+        <button
+          v-if="auth.isTutorMode && !isPast(selectedDay)"
+          class="btn btn-sm btn-primary"
+          @click="openAdd"
+        >
+          <i class="bi bi-plus-lg me-1"></i>Add a class this day
+        </button>
+      </div>
+      <div v-if="selectedSessions.length" class="list-group list-group-flush">
+        <button
+          v-for="b in selectedSessions"
+          :key="b.role + b.booking_id"
+          class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
+          @click="openSession()"
+        >
           <span>
             <span class="badge me-2" :class="b.role === 'tutor' ? 'cal-teach text-dark' : 'cal-learn text-dark'">
               {{ b.role === 'tutor' ? 'Teaching' : 'Learning' }}
@@ -152,6 +227,63 @@ const selectedSessions = computed(() => (selectedDay.value ? byDay.value[selecte
             <span class="text-muted small">· {{ b.role === 'tutor' ? b.learner_name : b.tutor_name }}</span>
           </span>
           <span :class="`status-pill status-${b.status.toLowerCase()}`">{{ b.status }}</span>
+        </button>
+      </div>
+      <div v-else class="card-body text-muted small">
+        No sessions on this day.
+        <template v-if="auth.isTutorMode && !isPast(selectedDay)"> Use “Add a class this day” to open one.</template>
+      </div>
+    </div>
+
+    <!-- Quick add-a-class modal (tutor) -->
+    <div v-if="showAdd" class="modal-backdrop-custom" @click.self="showAdd = false">
+      <div class="card add-modal shadow-lg">
+        <div class="card-body p-4">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <h5 class="fw-bold mb-0">New class · {{ selectedDay }}</h5>
+            <button class="btn-close" @click="showAdd = false"></button>
+          </div>
+          <div v-if="addError" class="alert alert-danger py-2 small">{{ addError }}</div>
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label small">Start</label>
+              <input v-model="addForm.start_time" type="time" class="form-control form-control-sm" />
+            </div>
+            <div class="col-6">
+              <label class="form-label small">End</label>
+              <input v-model="addForm.end_time" type="time" class="form-control form-control-sm" />
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Base price /hr</label>
+              <input v-model.number="addForm.base_price" type="number" min="10" step="1" class="form-control form-control-sm" />
+            </div>
+            <div class="col-6">
+              <label class="form-label small">Mode</label>
+              <select v-model="addForm.mode" class="form-select form-select-sm">
+                <option value="Physical">Physical</option>
+                <option value="Online">Online</option>
+              </select>
+            </div>
+            <div class="col-12">
+              <label class="form-label small">{{ addForm.mode === 'Online' ? 'Meeting link' : 'Location' }}</label>
+              <input v-if="addForm.mode === 'Online'" v-model="addForm.meeting_link" type="url" class="form-control form-control-sm" placeholder="https://meet.google.com/..." />
+              <input v-else v-model="addForm.location" type="text" class="form-control form-control-sm" placeholder="e.g. Library room 3" />
+            </div>
+            <div class="col-12">
+              <label class="form-label small">Visibility</label>
+              <select v-model="addForm.visibility" class="form-select form-select-sm">
+                <option value="Public">Public (anyone can find &amp; book)</option>
+                <option value="Private">Private (invite link only)</option>
+              </select>
+            </div>
+          </div>
+          <button class="btn btn-primary w-100 mt-3" :disabled="addingClass" @click="submitAdd">
+            <span v-if="addingClass" class="spinner-border spinner-border-sm me-2"></span>
+            {{ addingClass ? 'Adding…' : 'Add class' }}
+          </button>
+          <p class="text-muted small mt-2 mb-0">
+            <i class="bi bi-info-circle me-1"></i>The first student to book sets the topic; price drops RM1 per extra person (min RM10/hr).
+          </p>
         </div>
       </div>
     </div>
@@ -178,6 +310,24 @@ const selectedSessions = computed(() => (selectedDay.value ? byDay.value[selecte
   border-radius: 4px;
   padding: 1px 4px;
   margin-top: 2px;
+  cursor: pointer;
+}
+.cal-pill:hover { filter: brightness(0.95); }
+.modal-backdrop-custom {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 20, 35, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1050;
+  padding: 1rem;
+}
+.add-modal {
+  border: none;
+  border-radius: 16px;
+  max-width: 420px;
+  width: 100%;
 }
 /* Fixed role colours, independent of the navbar mode theme. */
 .cal-teach { background: #d8eaff; color: #14529c; }   /* teaching = blue */

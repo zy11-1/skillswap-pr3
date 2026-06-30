@@ -85,7 +85,7 @@ async function reserve() {
     <div v-else-if="slot" class="card border-0 shadow-sm">
       <div class="card-body p-4">
         <span class="badge bg-dark mb-2"><i class="bi bi-lock-fill me-1"></i>Private invite</span>
-        <h4 class="fw-bold mb-1">You're invited to a group class</h4>
+        <h4 class="fw-bold mb-1">You're invited to a class</h4>
         <p class="text-muted mb-3">with <strong>{{ slot.tutor_name }}</strong></p>
 
         <ul class="list-unstyled small mb-3">
@@ -95,7 +95,7 @@ async function reserve() {
             <i :class="slot.mode === 'Online' ? 'bi bi-camera-video' : 'bi bi-geo-alt'" class="me-2"></i>
             {{ slot.mode }}<template v-if="slot.location"> · {{ slot.location }}</template>
           </li>
-          <li class="mb-1"><i class="bi bi-people me-2"></i>{{ slot.seats_left }} of {{ slot.capacity }} seat(s) left</li>
+          <li class="mb-1"><i class="bi bi-people me-2"></i>{{ slot.seats_taken }} already booked</li>
           <li v-if="slot.topic" class="mb-1"><i class="bi bi-bookmark-fill me-2"></i>Topic: <strong>{{ slot.topic }}</strong></li>
           <li v-if="slot.topics_covered" class="mb-1"><i class="bi bi-card-text me-2"></i>{{ slot.topics_covered }}</li>
           <li v-if="slot.outcomes" class="mb-1"><i class="bi bi-bullseye me-2"></i>{{ slot.outcomes }}</li>

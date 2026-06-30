@@ -91,7 +91,7 @@ onMounted(loadSlots)
     <div class="card booking-modal shadow-lg">
       <div class="card-body p-4">
         <div class="d-flex justify-content-between align-items-start mb-3">
-          <h5 class="fw-bold mb-0">Join a group class</h5>
+          <h5 class="fw-bold mb-0">Book a class</h5>
           <button class="btn-close" @click="emit('close')"></button>
         </div>
 
@@ -157,7 +157,7 @@ onMounted(loadSlots)
               <div class="small text-muted mt-1">
                 <i :class="slot.mode === 'Online' ? 'bi bi-camera-video' : 'bi bi-geo-alt'" class="me-1"></i>{{ slot.mode }}
                 <template v-if="slot.mode === 'Physical' && slot.location"> · {{ slot.location }}</template>
-                <span class="ms-2"><i class="bi bi-people me-1"></i>{{ slot.seats_left }} of {{ slot.capacity }} seat(s) left</span>
+                <span class="ms-2"><i class="bi bi-people me-1"></i>{{ slot.seats_taken }} booked</span>
                 <span v-if="slot.i_have_priority" class="badge bg-warning text-dark ms-1">
                   <i class="bi bi-star-fill me-1"></i>Reserved for you
                 </span>
@@ -168,8 +168,8 @@ onMounted(loadSlots)
           <p class="text-muted small">
             <i class="bi bi-info-circle me-1"></i>
             The first student picks the topic; everyone else joins it. The price drops RM1 for each
-            extra student (min RM10/hr) — you’ll be <strong>refunded the difference</strong> if it fills up.
-            Every booking waits for the tutor's approval.
+            extra person who books (min RM10/hr) — you’ll be <strong>refunded the difference</strong> as
+            more people join. Every booking waits for the tutor's approval.
           </p>
 
           <!-- First booker picks the topic for an open slot -->

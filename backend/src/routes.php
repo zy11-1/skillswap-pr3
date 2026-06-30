@@ -47,6 +47,8 @@ return function (App $app) {
     $app->get('/api/skills/trending', [TutorController::class, 'trendingSkills']);
     // Open a private slot via its invite link token (public)
     $app->get('/api/slots/{token}', [TutorController::class, 'slotByToken']);
+    // Marketplace "Upcoming classes" board: started + published public classes (public)
+    $app->get('/api/classes/upcoming', [TutorController::class, 'upcomingClasses']);
     // ---------------------------------------------------------------
 // Tutor Availability
 // ---------------------------------------------------------------
@@ -139,6 +141,8 @@ $app->delete('/api/tutor/availability/{id}', [TutorController::class, 'deleteAva
     $app->group('/api/wallet', function ($group) {
         $group->get('', [WalletController::class, 'balance']);
         $group->get('/transactions', [WalletController::class, 'transactions']);
+        $group->post('/topup', [WalletController::class, 'topUp']);
+        $group->post('/withdraw', [WalletController::class, 'withdraw']);
     })->add($jwtMiddleware);
 
     // ---------------------------------------------------------------

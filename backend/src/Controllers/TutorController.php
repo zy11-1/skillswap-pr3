@@ -9,8 +9,13 @@ use Psr\Http\Message\ServerRequestInterface as Request;
 
 class TutorController
 {
-    // Dynamic group pricing: per-hour price can't fall below this floor.
+    // Dynamic pricing: per-hour price can't fall below this floor.
     private const MIN_HOURLY = 10.0;
+
+    // Classes have no seat cap. We keep the legacy `capacity` column (so no
+    // DB migration is needed) but store this sentinel so "is it full?" checks
+    // are always false — a class stays joinable until it runs or is cancelled.
+    private const UNLIMITED_SEATS = 100000;
 
     /**
      * Fill in the derived fields shared by every slot listing: numeric casts,
@@ -232,6 +237,48 @@ class TutorController
     }
 
     /**
+     * GET /api/classes/upcoming (public)
+     * The marketplace "Upcoming classes" board: every public class that a
+     * first student has already started (topic locked) and the tutor has
+     * described (syllabus published), so anyone can now join it. Each extra
+     * booking drops the price RM1 (RM10/hr floor), refunded to earlier
+     * joiners when the class completes.
+     */
+    public function upcomingClasses(Request $request, Response $response): Response
+    {
+        $db = Database::getConnection();
+
+        $stmt = $db->query(
+            "SELECT ta.availability_id, ta.tutor_id, ta.available_date, ta.start_time, ta.end_time,
+                    ta.capacity, ta.base_price, ta.mode, ta.location, ta.outcomes, ta.topics_covered,
+                    ta.locked_skill_id, ta.needs_syllabus,
+                    u.name AS tutor_name, u.photo_url AS tutor_photo,
+                    sk.name AS locked_skill_name, sk.category AS skill_category,
+                    (SELECT COUNT(*) FROM Booking b
+                     WHERE b.availability_id = ta.availability_id AND b.status <> 'Cancelled') AS seats_taken
+             FROM TutorAvailability ta
+             JOIN User u ON u.user_id = ta.tutor_id
+             JOIN Skill sk ON sk.skill_id = ta.locked_skill_id
+             WHERE ta.status = 'Active'
+               AND ta.visibility = 'Public'
+               AND ta.locked_skill_id IS NOT NULL
+               AND ta.needs_syllabus = 0
+               AND TIMESTAMP(ta.available_date, ta.start_time) > NOW()
+             ORDER BY ta.available_date, ta.start_time"
+        );
+        $classes = $stmt->fetchAll();
+
+        foreach ($classes as &$c) {
+            $this->decorateSlot($c);
+            $c['tutor_id'] = (int) $c['tutor_id'];
+            $c['booked_count'] = $c['seats_taken'];   // friendlier name for the UI
+        }
+        unset($c);
+
+        return $this->json($response, ['data' => $classes], 200);
+    }
+
+    /**
      * GET /api/tutors/{id}/availability
      * Returns the tutor's available time slots (future only).
      */
@@ -396,8 +443,11 @@ class TutorController
         $date = (string) ($data['available_date'] ?? '');
         $start = (string) ($data['start_time'] ?? '');
         $end = (string) ($data['end_time'] ?? '');
-        $capacity = (int) ($data['capacity'] ?? 1);             // number of seats
-        $basePrice = round((float) ($data['base_price'] ?? self::MIN_HOURLY), 2); // per seat, per hour
+        // A class has no seat cap any more — anyone can join until it runs.
+        // We keep the legacy column (no migration) and store an "unlimited"
+        // sentinel so the old capacity checks can never block a booking.
+        $capacity = self::UNLIMITED_SEATS;
+        $basePrice = round((float) ($data['base_price'] ?? self::MIN_HOURLY), 2); // starting price per hour
         $mode = ($data['mode'] ?? 'Physical') === 'Online' ? 'Online' : 'Physical';
         $meetingLink = trim((string) ($data['meeting_link'] ?? ''));
         $location = trim((string) ($data['location'] ?? ''));
@@ -415,9 +465,6 @@ class TutorController
         }
         if ($end <= $start) {
             return $this->json($response, ['error' => 'end_time must be after start_time.'], 422);
-        }
-        if ($capacity < 1) {
-            return $this->json($response, ['error' => 'capacity must be at least 1.'], 422);
         }
         if ($basePrice < self::MIN_HOURLY) {
             return $this->json($response, ['error' => 'Base price must be at least RM' . number_format(self::MIN_HOURLY, 2) . ' per hour.'], 422);

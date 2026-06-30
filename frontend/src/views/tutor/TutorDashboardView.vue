@@ -12,8 +12,7 @@ function blankSlot() {
     available_date: new Date().toISOString().split('T')[0],
     start_time: '09:00',
     end_time: '11:00',
-    capacity: 5,          // number of seats in this group class
-    base_price: 20,       // starting price per seat, per hour (RM10 floor)
+    base_price: 20,       // starting price per hour (RM10 floor)
     repeat_weeks: 1,      // 1 = single slot; >1 creates that many weekly copies
     mode: 'Physical',     // 'Physical' or 'Online'
     meeting_link: '',
@@ -190,11 +189,6 @@ async function addSlot() {
     return
   }
   slotError.value = ''
-  const capacity = Number(newSlot.value.capacity)
-  if (capacity < 1) {
-    slotError.value = 'A group class needs at least 1 seat.'
-    return
-  }
   if (Number(newSlot.value.base_price) < 10) {
     slotError.value = 'Base price must be at least RM10 per hour.'
     return
@@ -205,7 +199,6 @@ async function addSlot() {
       available_date: newSlot.value.available_date,
       start_time: newSlot.value.start_time,
       end_time: newSlot.value.end_time,
-      capacity,
       base_price: Number(newSlot.value.base_price),
       repeat_weeks: Number(newSlot.value.repeat_weeks) || 1,
       mode: newSlot.value.mode,
@@ -230,7 +223,6 @@ function startEdit(slot) {
   editError.value = ''
   editingId.value = slot.availability_id
   editForm.value = {
-    capacity: slot.capacity,
     base_price: slot.base_price,
     available_date: slot.available_date,
     start_time: slot.start_time ? slot.start_time.slice(0, 5) : '',
@@ -270,14 +262,9 @@ async function saveSyllabus(slot) {
 
 async function saveEdit(slot) {
   editError.value = ''
-  if (Number(editForm.value.capacity) < (slot.seats_taken || 0)) {
-    editError.value = `Capacity can't be below the ${slot.seats_taken} seat(s) already booked.`
-    return
-  }
   savingEdit.value = true
   try {
     await api.updateAvailability(slot.availability_id, {
-      capacity: Number(editForm.value.capacity),
       base_price: Number(editForm.value.base_price),
       start_time: editForm.value.start_time,
       end_time: editForm.value.end_time,
@@ -577,8 +564,7 @@ onMounted(() => {
                 {{ slot.start_time.slice(0,5) }} – {{ slot.end_time.slice(0,5) }}
                 <span class="badge ms-2 bg-info text-dark">
                   <i class="bi bi-people-fill me-1"></i>
-                  {{ slot.seats_taken }} {{ slot.seats_taken === 1 ? 'student' : 'students' }} enrolled
-                  <span class="fw-normal">· {{ slot.capacity }} seat cap</span>
+                  {{ slot.seats_taken }} {{ slot.seats_taken === 1 ? 'person' : 'people' }} booked
                 </span>
                 <span class="badge ms-1" :class="slot.mode === 'Online' ? 'bg-primary' : 'bg-success'">
                   <i :class="slot.mode === 'Online' ? 'bi bi-camera-video' : 'bi bi-geo-alt'" class="me-1"></i>
@@ -673,10 +659,6 @@ onMounted(() => {
                   </p>
                 </div>
                 <div class="col-md-3">
-                  <label class="form-label small">Seats</label>
-                  <input v-model.number="editForm.capacity" type="number" min="1" class="form-control form-control-sm" />
-                </div>
-                <div class="col-md-3">
                   <label class="form-label small">Base price /hr</label>
                   <input v-model.number="editForm.base_price" type="number" min="10" step="1"
                          :disabled="editForm.priceLocked" class="form-control form-control-sm" />
@@ -741,10 +723,6 @@ onMounted(() => {
             <input v-model="newSlot.end_time" type="time" class="form-control form-control-sm" />
           </div>
           <div class="col-md-2">
-            <label class="form-label small">Seats</label>
-            <input v-model.number="newSlot.capacity" type="number" min="1" class="form-control form-control-sm" />
-          </div>
-          <div class="col-md-2">
             <label class="form-label small">Base price /hr</label>
             <input v-model.number="newSlot.base_price" type="number" min="10" step="1" class="form-control form-control-sm" />
           </div>
@@ -790,16 +768,18 @@ onMounted(() => {
           </div>
           <div class="col-md-3">
             <button class="btn btn-primary btn-sm w-100" :disabled="saving" @click="addSlot">
-              {{ saving ? '...' : 'Add group class' }}
+              {{ saving ? '...' : 'Add class' }}
             </button>
           </div>
           <div class="col-12">
             <p class="text-muted small mb-0">
               <i class="bi bi-info-circle me-1"></i>
-              Every session is a <strong>group class</strong>: the first student picks the topic, then you
-              add what you'll cover. Price starts at your base rate and drops RM1 per extra student (min RM10/hr).
-              Bookings are prepaid and wait for your approval.
-              <template v-if="newSlot.visibility === 'Private'"><br />Private slots won't show in the marketplace — use <strong>Copy invite link</strong> after adding.</template>
+              The <strong>first student</strong> to book picks the topic; you then add what you'll cover and the
+              class opens on the marketplace's <strong>Upcoming classes</strong> board for others to join.
+              Price starts at your base rate and drops RM1 for every extra person who books (min RM10/hr) —
+              earlier joiners are refunded the difference when the class finishes. Bookings are prepaid and wait
+              for your approval.
+              <template v-if="newSlot.visibility === 'Private'"><br />Private classes stay off the marketplace — use <strong>Copy invite link</strong> after adding.</template>
             </p>
           </div>
         </div>

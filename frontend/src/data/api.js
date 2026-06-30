@@ -67,6 +67,12 @@ async getSlotByToken(token) {
   }
 },
 
+// Marketplace "Upcoming classes" board: started + published public classes.
+async getUpcomingClasses() {
+  const res = await http.get('/api/classes/upcoming')
+  return res.data
+},
+
 async updateAvailability(availabilityId, data) {
   try {
     const res = await http.patch(`/api/tutor/availability/${availabilityId}`, data)
@@ -388,6 +394,24 @@ async deleteAvailability(availabilityId) {
   async getWalletTransactions() {
     const res = await http.get('/api/wallet/transactions')
     return res.data
+  },
+
+  async walletTopUp(amount, cardLast4) {
+    try {
+      const res = await http.post('/api/wallet/topup', { amount, card_last4: cardLast4 })
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
+  },
+
+  async walletWithdraw(amount, cardLast4) {
+    try {
+      const res = await http.post('/api/wallet/withdraw', { amount, card_last4: cardLast4 })
+      return res.data
+    } catch (err) {
+      throw unwrapError(err)
+    }
   },
 
   // ---------- ADMIN ----------

@@ -22,16 +22,10 @@ function load() {
   return auth.isTutorMode ? bookingStore.fetchAsTutor() : bookingStore.fetchAsLearner()
 }
 
-onMounted(async () => {
-  await load()
-  if (!auth.isTutorMode) promptForPendingReview()
-})
+onMounted(load)
 
 // Re-fetch the right list whenever the user switches hat while on this page.
-watch(() => auth.activeMode, async () => {
-  await load()
-  if (!auth.isTutorMode) promptForPendingReview()
-})
+watch(() => auth.activeMode, load)
 
 const filteredBookings = computed(() => {
   if (statusFilter.value === 'All') return list.value
@@ -41,6 +35,15 @@ const filteredBookings = computed(() => {
 function slotType(b) {
   if (!b.slot_capacity) return null
   return b.slot_capacity > 1 ? 'Group' : 'Solo'
+}
+
+// A session is reviewable once its end time has passed (and it actually ran).
+function sessionEnded(b) {
+  const end = new Date(b.booking_date).getTime() + (b.duration || 1) * 3600 * 1000
+  return end < Date.now()
+}
+function canReview(b) {
+  return sessionEnded(b) && b.status !== 'Pending' && b.status !== 'Cancelled'
 }
 
 // ---- Tutor actions ----
@@ -71,10 +74,6 @@ async function saveRecording(b) {
 
 // ---- Learner review ----
 const reviewingBooking = ref(null)
-function promptForPendingReview() {
-  const needsReview = bookingStore.learnerBookings.find((b) => b.status === 'Completed' && !b.review_id)
-  if (needsReview) reviewingBooking.value = needsReview
-}
 function openReview(b) {
   reviewingBooking.value = b
 }
@@ -217,9 +216,9 @@ function formatDate(dateStr) {
                 <span v-else class="text-muted small">—</span>
               </template>
 
-              <!-- LEARNER: review a completed session -->
+              <!-- LEARNER: review once the session has ended -->
               <template v-else>
-                <template v-if="b.status === 'Completed'">
+                <template v-if="canReview(b)">
                   <div v-if="b.review_id" class="d-flex align-items-center gap-2">
                     <span class="text-warning small">
                       <i v-for="n in 5" :key="n" class="bi" :class="n <= b.review_rating ? 'bi-star-fill' : 'bi-star'"></i>
@@ -228,7 +227,7 @@ function formatDate(dateStr) {
                     <button class="btn btn-sm btn-outline-danger" @click="deleteReview(b)">Delete</button>
                   </div>
                   <button v-else class="btn btn-sm btn-primary" @click="openReview(b)">
-                    <i class="bi bi-star me-1"></i>Leave a review
+                    <i class="bi bi-star me-1"></i>Review &amp; rate
                   </button>
                 </template>
                 <span v-else class="text-muted small">—</span>

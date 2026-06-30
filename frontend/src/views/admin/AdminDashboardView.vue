@@ -32,24 +32,27 @@ const roleEditing = ref({})   // { [userId]: selectedRole }
 async function loadData() {
   loading.value = true
   try {
-    const [statsRes, pendingRes, usersRes, docRes, meritRes, reviewsRes, disputesRes, bookingsRes] = await Promise.all([
-      api.getAdminStats(),
-      api.getPendingVerifications(),
-      api.getAllUsers(),
-      api.getVerificationRequests(),
-      api.getMeritRequests(),
-      api.getAdminReviews(),
-      api.getAdminDisputes(),
-      api.getAdminBookings(),
-    ])
-    stats.value         = statsRes.data
-    pendingTutors.value = pendingRes.data
-    allUsers.value      = usersRes.data
-    docRequests.value   = docRes.data
-    meritRequests.value = meritRes.data
-    allReviews.value    = reviewsRes.data
-    disputes.value      = disputesRes.data
-    allBookings.value   = bookingsRes.data
+    // Use allSettled so one failing endpoint cannot zero-out the whole panel.
+    const [statsRes, pendingRes, usersRes, docRes, meritRes, reviewsRes, disputesRes, bookingsRes] =
+      await Promise.allSettled([
+        api.getAdminStats(),
+        api.getPendingVerifications(),
+        api.getAllUsers(),
+        api.getVerificationRequests(),
+        api.getMeritRequests(),
+        api.getAdminReviews(),
+        api.getAdminDisputes(),
+        api.getAdminBookings(),
+      ])
+
+    if (statsRes.status     === 'fulfilled') stats.value         = statsRes.value.data
+    if (pendingRes.status   === 'fulfilled') pendingTutors.value = pendingRes.value.data
+    if (usersRes.status     === 'fulfilled') allUsers.value      = usersRes.value.data
+    if (docRes.status       === 'fulfilled') docRequests.value   = docRes.value.data
+    if (meritRes.status     === 'fulfilled') meritRequests.value = meritRes.value.data
+    if (reviewsRes.status   === 'fulfilled') allReviews.value    = reviewsRes.value.data
+    if (disputesRes.status  === 'fulfilled') disputes.value      = disputesRes.value.data
+    if (bookingsRes.status  === 'fulfilled') allBookings.value   = bookingsRes.value.data
 
     // seed role editor with current values
     roleEditing.value = {}

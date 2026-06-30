@@ -175,15 +175,18 @@ ALTER TABLE Booking
     ADD CONSTRAINT fk_booking_availability
     FOREIGN KEY (availability_id) REFERENCES TutorAvailability(availability_id) ON DELETE SET NULL;
 -- ---------------------------------------------------------------
--- 10. MeritRequest (tutor converts platform credits -> university merits)
+-- 10. MeritRequest (performance-based UTM merit transfer application)
+--     Snapshot of the tutor's stats at application time.
 -- ---------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS MeritRequest (
-    merit_request_id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id          INT NOT NULL,
-    credits_amount   DECIMAL(10,2) NOT NULL,
-    merit_points     INT NOT NULL,
-    status           ENUM('Pending', 'Approved', 'Rejected') NOT NULL DEFAULT 'Pending',
-    created_at       TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    merit_request_id  INT AUTO_INCREMENT PRIMARY KEY,
+    user_id           INT NOT NULL,
+    classes_completed INT NOT NULL DEFAULT 0,
+    students_helped   INT NOT NULL DEFAULT 0,
+    avg_rating        DECIMAL(3,1) NOT NULL DEFAULT 0.0,
+    review_count      INT NOT NULL DEFAULT 0,
+    status            ENUM('Pending', 'Approved', 'Rejected') NOT NULL DEFAULT 'Pending',
+    created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_merit_user FOREIGN KEY (user_id) REFERENCES User(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 

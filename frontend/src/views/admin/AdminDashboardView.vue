@@ -285,7 +285,6 @@ async function resolveDispute(bookingId, resolution) {
                   <th>Name</th>
                   <th>Email</th>
                   <th>Faculty</th>
-                  <th>Role</th>
                   <th>Verified</th>
                   <th>Status</th>
                   <th class="text-end">Actions</th>
@@ -296,11 +295,6 @@ async function resolveDispute(bookingId, resolution) {
                   <td>{{ u.name }}</td>
                   <td class="small text-muted">{{ u.email }}</td>
                   <td class="small">{{ u.faculty }}</td>
-                  <td>
-                    <span class="badge" :class="u.role === 'admin' ? 'bg-dark' : u.role === 'tutor' ? 'bg-primary' : 'bg-secondary'">
-                      {{ u.role }}
-                    </span>
-                  </td>
                   <td>
                     <i v-if="u.is_verified" class="bi bi-check-circle-fill text-success"></i>
                     <i v-else class="bi bi-dash-circle text-muted"></i>

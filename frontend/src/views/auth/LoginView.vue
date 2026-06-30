@@ -23,8 +23,13 @@ async function handleSubmit() {
   loading.value = true
   try {
     await auth.login(email.value, password.value)
-    // Return to where they came from (e.g. a private slot invite), else marketplace.
-    router.push(route.query.redirect ? String(route.query.redirect) : '/marketplace')
+    if (route.query.redirect) {
+      router.push(String(route.query.redirect))
+    } else if (auth.isAdmin) {
+      router.push('/admin')
+    } else {
+      router.push('/marketplace')
+    }
   } catch (err) {
     error.value = err.message || 'Login failed. Please try again.'
   } finally {

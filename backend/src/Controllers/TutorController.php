@@ -217,9 +217,15 @@ class TutorController
         // Per slot: active bookings (seats_taken); seats reserved for OTHER
         // priority holders (whose 12h window is still open); and whether the
         // current viewer is themselves a priority holder for this slot.
+        // The tutor viewing their own availability sees every slot (incl.
+        // private ones + share tokens). Everyone else sees only Public slots.
+        $isOwner = $viewerId === $tutorId;
+        $visibilityFilter = $isOwner ? '' : " AND ta.visibility = 'Public'";
+
         $stmt = $db->prepare(
             "SELECT ta.availability_id, ta.tutor_id, ta.available_date, ta.start_time, ta.end_time, ta.capacity,
                     ta.mode, ta.meeting_link, ta.location, ta.resources, ta.outcomes, ta.status,
+                    ta.visibility, ta.share_token,
                     (SELECT COUNT(*) FROM Booking b
                      WHERE b.availability_id = ta.availability_id AND b.status <> 'Cancelled') AS seats_taken,
                     (SELECT COUNT(*) FROM SlotPriority sp
@@ -229,7 +235,7 @@ class TutorController
                      WHERE sp2.new_slot_id = ta.availability_id AND sp2.status = 'Offered'
                        AND sp2.expires_at > NOW() AND sp2.learner_id = :viewer_me) AS i_have_priority
              FROM TutorAvailability ta
-             WHERE ta.tutor_id = :tutor_id AND ta.available_date >= CURDATE() AND ta.status = 'Active'
+             WHERE ta.tutor_id = :tutor_id AND ta.available_date >= CURDATE() AND ta.status = 'Active'$visibilityFilter
              ORDER BY ta.available_date, ta.start_time"
         );
         $stmt->execute(['tutor_id' => $tutorId, 'viewer_others' => $viewerId, 'viewer_me' => $viewerId]);
@@ -246,6 +252,10 @@ class TutorController
             $slot['type'] = $slot['capacity'] > 1 ? 'Group' : 'Solo';
             $slot['is_full'] = $slot['seats_left'] <= 0;
             unset($slot['reserved_others']);
+            // Never leak a private slot's token to anyone but the owner.
+            if (!$isOwner) {
+                unset($slot['share_token']);
+            }
         }
         unset($slot);
 
@@ -272,6 +282,9 @@ class TutorController
         $location = trim((string) ($data['location'] ?? ''));
         $resources = trim((string) ($data['resources'] ?? ''));
         $outcomes = trim((string) ($data['outcomes'] ?? ''));
+        // Public (browsable) or Private (invite-link only).
+        $visibility = ($data['visibility'] ?? 'Public') === 'Private' ? 'Private' : 'Public';
+        $shareToken = $visibility === 'Private' ? bin2hex(random_bytes(16)) : null;
 
         if ($date === '' || $start === '' || $end === '') {
             return $this->json($response, ['error' => 'available_date, start_time, end_time are required.'], 422);
@@ -291,8 +304,8 @@ class TutorController
 
         $db = Database::getConnection();
         $stmt = $db->prepare(
-            'INSERT INTO TutorAvailability (tutor_id, available_date, start_time, end_time, capacity, mode, meeting_link, location, resources, outcomes)
-             VALUES (:tutor_id, :date, :start, :end, :capacity, :mode, :meeting_link, :location, :resources, :outcomes)'
+            'INSERT INTO TutorAvailability (tutor_id, available_date, start_time, end_time, capacity, mode, meeting_link, location, resources, outcomes, visibility, share_token)
+             VALUES (:tutor_id, :date, :start, :end, :capacity, :mode, :meeting_link, :location, :resources, :outcomes, :visibility, :share_token)'
         );
         $stmt->execute([
             'tutor_id' => $userId,
@@ -305,6 +318,8 @@ class TutorController
             'location' => $location === '' ? null : $location,
             'resources' => $resources === '' ? null : $resources,
             'outcomes' => $outcomes === '' ? null : $outcomes,
+            'visibility' => $visibility,
+            'share_token' => $shareToken,
         ]);
 
         $id = (int) $db->lastInsertId();
@@ -313,7 +328,10 @@ class TutorController
         // them this new slot first (12h priority window).
         $this->offerPriorityForNewSlot($db, $userId, $id);
 
-        return $this->json($response, ['data' => ['availability_id' => $id, 'capacity' => $capacity]], 201);
+        return $this->json($response, ['data' => [
+            'availability_id' => $id, 'capacity' => $capacity,
+            'visibility' => $visibility, 'share_token' => $shareToken,
+        ]], 201);
     }
 
     /**

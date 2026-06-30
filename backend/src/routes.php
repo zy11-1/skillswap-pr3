@@ -4,6 +4,7 @@ declare(strict_types=1);
 use App\Controllers\AdminController;
 use App\Controllers\AuthController;
 use App\Controllers\BookingController;
+use App\Controllers\FavoriteController;
 use App\Controllers\GroupClassController;
 use App\Controllers\MeritController;
 use App\Controllers\MessageController;
@@ -80,6 +81,15 @@ $app->delete('/api/tutor/availability/{id}', [TutorController::class, 'deleteAva
         $group->post('', [ReviewController::class, 'create']);
         $group->patch('/{id}', [ReviewController::class, 'update']);
         $group->delete('/{id}', [ReviewController::class, 'delete']);
+    })->add($jwtMiddleware);
+
+    // ---------------------------------------------------------------
+    // Favourite tutors (requires JWT)
+    // ---------------------------------------------------------------
+    $app->group('/api/favorites', function ($group) {
+        $group->get('', [FavoriteController::class, 'index']);
+        $group->get('/ids', [FavoriteController::class, 'ids']);
+        $group->post('/{tutorId}', [FavoriteController::class, 'toggle']);
     })->add($jwtMiddleware);
 
     // ---------------------------------------------------------------

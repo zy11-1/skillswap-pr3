@@ -3,9 +3,11 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '@/data/api'
 import BookingModal from '@/components/booking/BookingModal.vue'
+import { useFavoritesStore } from '@/stores/favorites'
 
 const route = useRoute()
 const router = useRouter()
+const favorites = useFavoritesStore()
 
 const tutor = ref(null)
 const loading = ref(true)
@@ -24,7 +26,18 @@ async function loadTutor() {
   }
 }
 
-onMounted(loadTutor)
+onMounted(() => {
+  loadTutor()
+  favorites.fetchIds()
+})
+
+async function toggleFav() {
+  try {
+    await favorites.toggle(route.params.id)
+  } catch (err) {
+    alert(err.message || 'Could not update favourite.')
+  }
+}
 
 function openBooking(offering) {
   selectedOffering.value = offering
@@ -73,12 +86,18 @@ function handleBooked() {
               {{ tutor.faculty }}<template v-if="tutor.year_of_study"> · {{ tutor.year_of_study }}</template>
             </p>
             <p class="small">{{ tutor.bio }}</p>
-            <router-link
-              :to="{ name: 'messages', query: { to: tutor.user_id, name: tutor.name } }"
-              class="btn btn-outline-primary btn-sm"
-            >
-              <i class="bi bi-chat-dots me-1"></i>Message
-            </router-link>
+            <div class="d-flex gap-2 justify-content-center">
+              <router-link
+                :to="{ name: 'messages', query: { to: tutor.user_id, name: tutor.name } }"
+                class="btn btn-outline-primary btn-sm"
+              >
+                <i class="bi bi-chat-dots me-1"></i>Message
+              </router-link>
+              <button class="btn btn-sm" :class="favorites.isFavorite(tutor.user_id) ? 'btn-danger' : 'btn-outline-danger'" @click="toggleFav">
+                <i :class="favorites.isFavorite(tutor.user_id) ? 'bi bi-heart-fill' : 'bi bi-heart'"></i>
+                {{ favorites.isFavorite(tutor.user_id) ? 'Favourited' : 'Favourite' }}
+              </button>
+            </div>
           </div>
         </div>
 

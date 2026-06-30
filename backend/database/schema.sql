@@ -213,6 +213,19 @@ CREATE TABLE IF NOT EXISTS GroupEnrollment (
     CONSTRAINT uq_enroll UNIQUE (group_class_id, learner_id)
 ) ENGINE=InnoDB;
 
+-- ---------------------------------------------------------------
+-- 12. Favorite (a learner pins a tutor)
+-- ---------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS Favorite (
+    favorite_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id     INT NOT NULL,   -- the learner who favourited
+    tutor_id    INT NOT NULL,   -- the favourited tutor
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT fk_fav_user FOREIGN KEY (user_id) REFERENCES User(user_id) ON DELETE CASCADE,
+    CONSTRAINT fk_fav_tutor FOREIGN KEY (tutor_id) REFERENCES User(user_id) ON DELETE CASCADE,
+    CONSTRAINT uq_fav UNIQUE (user_id, tutor_id)
+) ENGINE=InnoDB;
+
 -- =================================================================
 -- SEED DATA (matches the mock JSON used in PR2, so demo accounts
 -- behave the same way once you switch from mock data to this DB)

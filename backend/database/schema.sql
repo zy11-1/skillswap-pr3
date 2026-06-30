@@ -76,6 +76,8 @@ CREATE TABLE IF NOT EXISTS Booking (
     total_amount    DECIMAL(10,2) NOT NULL,
     recording_url   VARCHAR(255) NULL,
     availability_id INT NULL,
+    payment_timing  ENUM('prepay', 'postpay') NOT NULL DEFAULT 'postpay',
+    is_paid         TINYINT(1) NOT NULL DEFAULT 0,
     created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_booking_learner FOREIGN KEY (learner_id) REFERENCES User(user_id) ON DELETE CASCADE,
     CONSTRAINT fk_booking_tutor FOREIGN KEY (tutor_id) REFERENCES User(user_id) ON DELETE CASCADE,

@@ -1,9 +1,10 @@
 <script setup>
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 
 const email = ref('')
@@ -22,7 +23,8 @@ async function handleSubmit() {
   loading.value = true
   try {
     await auth.login(email.value, password.value)
-    router.push('/marketplace')
+    // Return to where they came from (e.g. a private slot invite), else marketplace.
+    router.push(route.query.redirect ? String(route.query.redirect) : '/marketplace')
   } catch (err) {
     error.value = err.message || 'Login failed. Please try again.'
   } finally {

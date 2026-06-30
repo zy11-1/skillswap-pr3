@@ -53,6 +53,12 @@ const routes = [
     meta: { requiresAuth: true }
   },
   {
+    path: '/slot/:token',
+    name: 'slot-invite',
+    component: () => import('@/views/SlotInviteView.vue')
+    // Public: anyone with the invite link can view; booking prompts login.
+  },
+  {
     path: '/tutor-dashboard',
     name: 'tutor-dashboard',
     component: () => import('@/views/tutor/TutorDashboardView.vue'),

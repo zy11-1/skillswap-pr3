@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(php \"/private/tmp/claude-501/-Users-zzimly-Desktop-skillswap-pr3/53e8fc64-8e0b-4870-8d33-8c95902bad20/scratchpad/seed.php\")",
-      "Bash(python3 -c ' *)"
-    ]
-  }
-}

@@ -125,17 +125,17 @@ class MeritController
     }
 
     /**
-     * GET /api/admin/merits (admin) — pending applications with the snapshot.
+     * GET /api/admin/merits (admin) — all applications with the snapshot,
+     * pending first so the actionable ones lead; the UI filters by status.
      */
     public function adminList(Request $request, Response $response): Response
     {
         $db = Database::getConnection();
         $stmt = $db->query(
             "SELECT mr.merit_request_id, mr.user_id, mr.classes_completed, mr.students_helped,
-                    mr.avg_rating, mr.review_count, mr.created_at, u.name, u.faculty
+                    mr.avg_rating, mr.review_count, mr.status, mr.created_at, u.name, u.faculty
              FROM MeritRequest mr JOIN User u ON u.user_id = mr.user_id
-             WHERE mr.status = 'Pending'
-             ORDER BY mr.created_at ASC"
+             ORDER BY (mr.status = 'Pending') DESC, mr.created_at ASC"
         );
         return $this->json($response, ['data' => $stmt->fetchAll()], 200);
     }

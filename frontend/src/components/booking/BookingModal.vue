@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useBookingStore } from '@/stores/booking'
 import { api } from '@/data/api'
+import PaymentPolicies from '@/components/booking/PaymentPolicies.vue'
 
 const props = defineProps({
   tutor: { type: Object, required: true },
@@ -209,6 +210,9 @@ onMounted(loadSlots)
           <button v-if="confirming" type="button" class="btn btn-link btn-sm w-100" @click="confirming = false">
             Back
           </button>
+
+          <!-- 100% financial transparency, directly below the booking flow -->
+          <PaymentPolicies :slot="selectedSlot" />
         </template>
       </div>
     </div>
@@ -232,6 +236,8 @@ onMounted(loadSlots)
   border-radius: 16px;
   max-width: 440px;
   width: 100%;
+  max-height: 92vh;
+  overflow-y: auto;
 }
 
 .slot-list {

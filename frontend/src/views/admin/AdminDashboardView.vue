@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { api, apiBaseUrl } from '@/data/api'
 import TipBanner from '@/components/TipBanner.vue'
 
@@ -16,6 +16,46 @@ const loading        = ref(true)
 
 // ── active tab ────────────────────────────────────────────────────────────────
 const activeTab = ref('overview')
+
+// ── per-tab status filters ────────────────────────────────────────────────────
+// Each work queue can be narrowed to what still needs the admin's attention
+// ("Pending"/"Open") vs what's already handled ("Done"/"Resolved").
+const verifFilter   = ref('Pending')   // Pending | Done | All
+const meritFilter   = ref('Pending')   // Pending | Done | All
+const disputeFilter = ref('Open')      // Open | Resolved | All
+const bookingFilter = ref('All')       // All | Pending | Accepted | Completed | Cancelled | Disputed
+
+const filteredDocRequests = computed(() =>
+  docRequests.value.filter((r) =>
+    verifFilter.value === 'All' ? true
+      : verifFilter.value === 'Pending' ? r.status === 'Pending'
+      : r.status !== 'Pending'
+  )
+)
+const filteredMerits = computed(() =>
+  meritRequests.value.filter((r) =>
+    meritFilter.value === 'All' ? true
+      : meritFilter.value === 'Pending' ? r.status === 'Pending'
+      : r.status !== 'Pending'
+  )
+)
+const filteredDisputes = computed(() =>
+  disputes.value.filter((d) =>
+    disputeFilter.value === 'All' ? true
+      : disputeFilter.value === 'Open' ? d.dispute_status === 'open'
+      : d.dispute_status !== 'open'
+  )
+)
+const filteredAdminBookings = computed(() =>
+  allBookings.value.filter((b) =>
+    bookingFilter.value === 'All' ? true
+      : bookingFilter.value === 'Disputed' ? (b.dispute_status && b.dispute_status !== 'none')
+      : b.status === bookingFilter.value
+  )
+)
+const pendingVerifCount   = computed(() => docRequests.value.filter((r) => r.status === 'Pending').length)
+const pendingMeritCount   = computed(() => meritRequests.value.filter((r) => r.status === 'Pending').length)
+const openDisputeCount    = computed(() => disputes.value.filter((d) => d.dispute_status === 'open').length)
 
 // ── per-action busy flags ─────────────────────────────────────────────────────
 const verifyingId      = ref(null)
@@ -85,8 +125,10 @@ async function reviewDoc(requestId, status) {
   reviewingId.value = requestId
   try {
     await api.reviewVerification(requestId, status)
+    // The list holds every request now; flip this one to its decided status
+    // so it moves from the "Pending" filter into "Done".
     const req = docRequests.value.find(r => r.request_id === requestId)
-    docRequests.value = docRequests.value.filter(r => r.request_id !== requestId)
+    if (req) req.status = status
     if (status === 'Approved' && req) {
       const user = allUsers.value.find(u => u.user_id === req.user_id)
       if (user) user.is_verified = 1
@@ -105,12 +147,31 @@ async function viewMerit(r) {
   viewingMeritLoading.value = true
   try {
     const res = await api.getAdminMeritDetail(r.merit_request_id)
-    viewingMerit.value = res.data
+    // Keep the list row's status — the detail endpoint may not echo it.
+    viewingMerit.value = { ...r, ...res.data }
   } catch (err) {
     alert(err.message || 'Could not load application detail.')
     viewingMerit.value = null
   } finally {
     viewingMeritLoading.value = false
+  }
+}
+
+// Decide a merit application in-app (Approve/Reject); the row flips from the
+// "Pending" filter into "Done" and the tutor is notified by the backend.
+const decidingMerit = ref(false)
+async function decideMerit(status) {
+  if (!viewingMerit.value) return
+  decidingMerit.value = true
+  try {
+    await api.reviewMerit(viewingMerit.value.merit_request_id, status)
+    const row = meritRequests.value.find(r => r.merit_request_id === viewingMerit.value.merit_request_id)
+    if (row) row.status = status
+    viewingMerit.value = null
+  } catch (err) {
+    alert(err.message || 'Could not update the application.')
+  } finally {
+    decidingMerit.value = false
   }
 }
 
@@ -381,17 +442,26 @@ async function resolveDispute(bookingId, resolution) {
 
       <!-- ═══════════════════════════════════════════════════ VERIFICATIONS TAB -->
       <div v-show="activeTab === 'verif'">
-        <h6 class="fw-bold mb-3">Document Verification Requests</h6>
-        <div v-if="docRequests.length" class="card border-0 shadow-sm mb-4">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+          <h6 class="fw-bold mb-0">Document Verification Requests</h6>
+          <div class="btn-group btn-group-sm">
+            <button v-for="f in ['Pending', 'Done', 'All']" :key="f" class="btn"
+              :class="verifFilter === f ? 'btn-primary' : 'btn-outline-secondary'"
+              @click="verifFilter = f">
+              {{ f }}<template v-if="f === 'Pending'"> ({{ pendingVerifCount }})</template>
+            </button>
+          </div>
+        </div>
+        <div v-if="filteredDocRequests.length" class="card border-0 shadow-sm mb-4">
           <div class="table-responsive">
             <table class="table mb-0 align-middle">
               <thead>
                 <tr class="text-muted small">
-                  <th>Name</th><th>Faculty</th><th>Document</th><th class="text-end">Action</th>
+                  <th>Name</th><th>Faculty</th><th>Document</th><th>Status</th><th class="text-end">Action</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="r in docRequests" :key="r.request_id">
+                <tr v-for="r in filteredDocRequests" :key="r.request_id">
                   <td>{{ r.name }}</td>
                   <td>{{ r.faculty }}</td>
                   <td>
@@ -399,20 +469,32 @@ async function resolveDispute(bookingId, resolution) {
                       <i class="bi bi-file-earmark-text me-1"></i>View document
                     </a>
                   </td>
+                  <td>
+                    <span class="badge" :class="{
+                      'bg-warning text-dark': r.status === 'Pending',
+                      'bg-success': r.status === 'Approved',
+                      'bg-secondary': r.status === 'Rejected',
+                    }">{{ r.status }}</span>
+                  </td>
                   <td class="text-end">
-                    <button class="btn btn-success btn-sm me-1" :disabled="reviewingId === r.request_id" @click="reviewDoc(r.request_id, 'Approved')">
-                      <i class="bi bi-check-lg"></i> Approve
-                    </button>
-                    <button class="btn btn-outline-danger btn-sm" :disabled="reviewingId === r.request_id" @click="reviewDoc(r.request_id, 'Rejected')">
-                      Reject
-                    </button>
+                    <template v-if="r.status === 'Pending'">
+                      <button class="btn btn-success btn-sm me-1" :disabled="reviewingId === r.request_id" @click="reviewDoc(r.request_id, 'Approved')">
+                        <i class="bi bi-check-lg"></i> Approve
+                      </button>
+                      <button class="btn btn-outline-danger btn-sm" :disabled="reviewingId === r.request_id" @click="reviewDoc(r.request_id, 'Rejected')">
+                        Reject
+                      </button>
+                    </template>
+                    <span v-else class="text-muted small">Done</span>
                   </td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
-        <p v-else class="text-muted small mb-4">No document requests awaiting review.</p>
+        <p v-else class="text-muted small mb-4">
+          {{ verifFilter === 'Pending' ? 'Nothing waiting — all document requests are handled.' : 'No requests match this filter.' }}
+        </p>
 
         <h6 class="fw-bold mb-3">Pending Tutor Verifications</h6>
         <div v-if="pendingTutors.length" class="card border-0 shadow-sm">
@@ -441,26 +523,42 @@ async function resolveDispute(bookingId, resolution) {
 
       <!-- ═══════════════════════════════════════════════════════ MERITS TAB -->
       <div v-show="activeTab === 'merits'">
-        <h6 class="fw-bold mb-3">UTM Merit Transfer Applications</h6>
-        <div v-if="meritRequests.length" class="card border-0 shadow-sm">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+          <h6 class="fw-bold mb-0">UTM Merit Transfer Applications</h6>
+          <div class="btn-group btn-group-sm">
+            <button v-for="f in ['Pending', 'Done', 'All']" :key="f" class="btn"
+              :class="meritFilter === f ? 'btn-primary' : 'btn-outline-secondary'"
+              @click="meritFilter = f">
+              {{ f }}<template v-if="f === 'Pending'"> ({{ pendingMeritCount }})</template>
+            </button>
+          </div>
+        </div>
+        <div v-if="filteredMerits.length" class="card border-0 shadow-sm">
           <div class="table-responsive">
             <table class="table mb-0 align-middle">
               <thead>
                 <tr class="text-muted small">
-                  <th>Name</th><th>Faculty</th><th>Classes</th><th>Students</th><th>Rating</th><th>Reviews</th><th class="text-end">Action</th>
+                  <th>Name</th><th>Faculty</th><th>Classes</th><th>Students</th><th>Rating</th><th>Reviews</th><th>Status</th><th class="text-end">Action</th>
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="r in meritRequests" :key="r.merit_request_id">
+                <tr v-for="r in filteredMerits" :key="r.merit_request_id">
                   <td>{{ r.name }}</td>
                   <td>{{ r.faculty }}</td>
                   <td>{{ r.classes_completed }}</td>
                   <td>{{ r.students_helped }}</td>
                   <td>{{ r.avg_rating }}★</td>
                   <td>{{ r.review_count }}</td>
+                  <td>
+                    <span class="badge" :class="{
+                      'bg-warning text-dark': r.status === 'Pending',
+                      'bg-success': r.status === 'Approved',
+                      'bg-secondary': r.status === 'Rejected',
+                    }">{{ r.status }}</span>
+                  </td>
                   <td class="text-end">
                     <button class="btn btn-outline-primary btn-sm" @click="viewMerit(r)">
-                      <i class="bi bi-eye me-1"></i>View
+                      <i class="bi bi-eye me-1"></i>{{ r.status === 'Pending' ? 'Review' : 'View' }}
                     </button>
                   </td>
                 </tr>
@@ -468,7 +566,9 @@ async function resolveDispute(bookingId, resolution) {
             </table>
           </div>
         </div>
-        <p v-else class="text-muted small">No merit conversion requests pending.</p>
+        <p v-else class="text-muted small">
+          {{ meritFilter === 'Pending' ? 'Nothing waiting — all applications are decided.' : 'No applications match this filter.' }}
+        </p>
       </div>
 
       <!-- ═══════════════════════════════════════════════════════ CONTENT TAB -->
@@ -515,10 +615,19 @@ async function resolveDispute(bookingId, resolution) {
 
       <!-- ═══════════════════════════════════════════════════════ DISPUTES TAB -->
       <div v-show="activeTab === 'disputes'">
-        <h6 class="fw-bold mb-2">Dispute Queue
-          <span class="fw-normal text-muted small ms-2">Mediate learner–tutor disputes</span>
-        </h6>
-        <div v-if="disputes.length" class="card border-0 shadow-sm">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+          <h6 class="fw-bold mb-0">Dispute Queue
+            <span class="fw-normal text-muted small ms-2">Mediate learner–tutor disputes</span>
+          </h6>
+          <div class="btn-group btn-group-sm">
+            <button v-for="f in ['Open', 'Resolved', 'All']" :key="f" class="btn"
+              :class="disputeFilter === f ? 'btn-primary' : 'btn-outline-secondary'"
+              @click="disputeFilter = f">
+              {{ f }}<template v-if="f === 'Open'"> ({{ openDisputeCount }})</template>
+            </button>
+          </div>
+        </div>
+        <div v-if="filteredDisputes.length" class="card border-0 shadow-sm">
           <div class="table-responsive">
             <table class="table mb-0 align-middle">
               <thead>
@@ -527,7 +636,7 @@ async function resolveDispute(bookingId, resolution) {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="d in disputes" :key="d.booking_id">
+                <tr v-for="d in filteredDisputes" :key="d.booking_id">
                   <td class="small">{{ d.learner_name }}<br><span class="text-muted">{{ d.learner_email }}</span></td>
                   <td class="small">{{ d.tutor_name }}</td>
                   <td class="small">{{ d.skill_name }}</td>
@@ -563,15 +672,24 @@ async function resolveDispute(bookingId, resolution) {
             </table>
           </div>
         </div>
-        <p v-else class="text-muted small">No disputes have been raised.</p>
+        <p v-else class="text-muted small">
+          {{ disputeFilter === 'Open' ? 'Nothing open — every dispute has been handled.' : 'No disputes match this filter.' }}
+        </p>
       </div>
 
       <!-- ═══════════════════════════════════════════════════ ALL BOOKINGS TAB -->
       <div v-show="activeTab === 'bookings'">
-        <h6 class="fw-bold mb-2">Platform-wide Bookings
-          <span class="fw-normal text-muted small ms-2">Most recent 200 — for context when mediating disputes</span>
-        </h6>
-        <div v-if="allBookings.length" class="card border-0 shadow-sm">
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+          <h6 class="fw-bold mb-0">Platform-wide Bookings
+            <span class="fw-normal text-muted small ms-2">Most recent 200 — for context when mediating disputes</span>
+          </h6>
+          <div class="btn-group btn-group-sm">
+            <button v-for="f in ['All', 'Pending', 'Accepted', 'Completed', 'Cancelled', 'Disputed']" :key="f" class="btn"
+              :class="bookingFilter === f ? 'btn-primary' : 'btn-outline-secondary'"
+              @click="bookingFilter = f">{{ f }}</button>
+          </div>
+        </div>
+        <div v-if="filteredAdminBookings.length" class="card border-0 shadow-sm">
           <div class="table-responsive">
             <table class="table mb-0 align-middle small">
               <thead>
@@ -580,7 +698,7 @@ async function resolveDispute(bookingId, resolution) {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="b in allBookings" :key="b.booking_id">
+                <tr v-for="b in filteredAdminBookings" :key="b.booking_id">
                   <td class="text-muted">{{ b.booking_id }}</td>
                   <td>{{ b.learner_name }}</td>
                   <td>{{ b.tutor_name }}</td>
@@ -609,7 +727,7 @@ async function resolveDispute(bookingId, resolution) {
             </table>
           </div>
         </div>
-        <p v-else class="text-muted small">No bookings yet.</p>
+        <p v-else class="text-muted small">No bookings match this filter.</p>
       </div>
 
     </template>
@@ -697,7 +815,18 @@ async function resolveDispute(bookingId, resolution) {
         </div>
 
         <div class="modal-footer">
-          <a :href="forwardMailto(viewingMerit)" class="btn btn-primary">
+          <template v-if="(viewingMerit.status || 'Pending') === 'Pending'">
+            <button class="btn btn-success" :disabled="decidingMerit" @click="decideMerit('Approved')">
+              <i class="bi bi-check-lg me-1"></i>Approve
+            </button>
+            <button class="btn btn-outline-danger" :disabled="decidingMerit" @click="decideMerit('Rejected')">
+              Reject
+            </button>
+          </template>
+          <span v-else class="badge me-auto" :class="viewingMerit.status === 'Approved' ? 'bg-success' : 'bg-secondary'">
+            {{ viewingMerit.status }}
+          </span>
+          <a :href="forwardMailto(viewingMerit)" class="btn btn-outline-primary">
             <i class="bi bi-envelope me-1"></i>Forward to Approver
           </a>
           <button class="btn btn-outline-secondary" @click="viewingMerit = null">Close</button>

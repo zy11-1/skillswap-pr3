@@ -139,8 +139,7 @@ class AdminController
             "SELECT vr.request_id, vr.user_id, vr.document_url, vr.status, vr.submitted_at,
                     u.name, u.email, u.faculty
              FROM VerificationRequest vr JOIN User u ON u.user_id = vr.user_id
-             WHERE vr.status = 'Pending'
-             ORDER BY vr.submitted_at ASC"
+             ORDER BY (vr.status = 'Pending') DESC, vr.submitted_at ASC"
         );
         return $this->json($response, ['data' => $stmt->fetchAll()], 200);
     }

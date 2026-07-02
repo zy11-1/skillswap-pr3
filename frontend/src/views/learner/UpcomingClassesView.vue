@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { api } from '@/data/api'
 import { useAuthStore } from '@/stores/auth'
+import PaymentPolicies from '@/components/booking/PaymentPolicies.vue'
 
 const auth = useAuthStore()
 
@@ -155,6 +156,9 @@ onMounted(loadData)
               </button>
               <button class="btn btn-light" @click="joinTarget = null">Cancel</button>
             </div>
+
+            <!-- 100% financial transparency, directly below the booking flow -->
+            <PaymentPolicies :slot="joinTarget" />
           </template>
         </div>
       </div>
@@ -187,5 +191,7 @@ onMounted(loadData)
   border-radius: 16px;
   max-width: 420px;
   width: 100%;
+  max-height: 92vh;
+  overflow-y: auto;
 }
 </style>

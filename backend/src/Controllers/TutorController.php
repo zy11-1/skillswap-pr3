@@ -766,25 +766,47 @@ class TutorController
 
         $when = $slot['available_date'] . ' ' . substr($slot['start_time'], 0, 5);
 
-        // Learners with an active booking on this slot.
-        $stmt = $db->prepare("SELECT learner_id FROM Booking WHERE availability_id = :id AND status <> 'Cancelled'");
+        // Active bookings on this slot (learner + what they prepaid).
+        $stmt = $db->prepare(
+            "SELECT booking_id, learner_id, total_amount, is_paid
+             FROM Booking WHERE availability_id = :id AND status <> 'Cancelled'"
+        );
         $stmt->execute(['id' => $availabilityId]);
-        $learnerIds = array_map('intval', array_column($stmt->fetchAll(), 'learner_id'));
+        $bookings = $stmt->fetchAll();
 
         $db->beginTransaction();
         try {
             $db->prepare("UPDATE TutorAvailability SET status = 'Cancelled' WHERE availability_id = :id")
                ->execute(['id' => $availabilityId]);
-            $db->prepare("UPDATE Booking SET status = 'Cancelled' WHERE availability_id = :id AND status <> 'Cancelled'")
-               ->execute(['id' => $availabilityId]);
 
+            $refundBalance = $db->prepare('UPDATE User SET wallet_balance = wallet_balance + :amount WHERE user_id = :id');
+            $insertTxn = $db->prepare(
+                "INSERT INTO WalletTransaction (user_id, amount, type, booking_id) VALUES (:user_id, :amount, 'Credit', :booking_id)"
+            );
+            $cancelBooking = $db->prepare(
+                "UPDATE Booking SET status = 'Cancelled', is_paid = 0,
+                        dispute_status = IF(dispute_status = 'none', 'open', dispute_status),
+                        dispute_reason = COALESCE(dispute_reason, 'Auto-flagged: the tutor cancelled the class slot.')
+                 WHERE booking_id = :id"
+            );
             $msg = $db->prepare("INSERT INTO Message (sender_id, receiver_id, body, category) VALUES (:tutor, :learner, :body, 'booking')");
             $prio = $db->prepare(
                 "INSERT INTO SlotPriority (tutor_id, learner_id, origin_slot_id, status) VALUES (:tutor, :learner, :origin, 'Waiting')"
             );
 
-            foreach ($learnerIds as $lid) {
+            foreach ($bookings as $b) {
+                $lid = (int) $b['learner_id'];
+                $refunded = false;
+                if ((int) $b['is_paid'] === 1) {
+                    $refundBalance->execute(['amount' => (float) $b['total_amount'], 'id' => $lid]);
+                    $insertTxn->execute(['user_id' => $lid, 'amount' => (float) $b['total_amount'], 'booking_id' => (int) $b['booking_id']]);
+                    $refunded = true;
+                }
+                $cancelBooking->execute(['id' => (int) $b['booking_id']]);
+
                 $body = "Your session on $when was cancelled by the tutor."
+                    . ($refunded ? ' Your prepayment of RM' . number_format((float) $b['total_amount'], 2) . ' has been refunded to your wallet.' : '')
+                    . ' An admin has been notified.'
                     . ($givePriority
                         ? ' You have priority on their next slot — watch for an offer (12 hours to grab your seat).'
                         : '');
@@ -802,7 +824,7 @@ class TutorController
         }
 
         return $this->json($response, [
-            'data' => ['cancelled' => true, 'students_notified' => count($learnerIds), 'priority' => $givePriority],
+            'data' => ['cancelled' => true, 'students_notified' => count($bookings), 'priority' => $givePriority],
         ], 200);
     }
 

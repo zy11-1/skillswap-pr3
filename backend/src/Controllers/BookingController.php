@@ -406,12 +406,20 @@ class BookingController
                             $insertTxn->execute(['user_id' => $adminId, 'amount' => $commission, 'type' => 'Credit', 'booking_id' => $bookingId]);
                         }
                     }
-                } elseif ($newStatus === 'Cancelled' && (int) $booking['is_paid'] === 1) {
-                    // Refund a prepaid booking that's being declined/cancelled.
-                    $updateBalance->execute(['amount' => $amount, 'id' => $booking['learner_id']]);
-                    $insertTxn->execute(['user_id' => $booking['learner_id'], 'amount' => $amount, 'type' => 'Credit', 'booking_id' => $bookingId]);
-                    $db->prepare('UPDATE Booking SET is_paid = 0 WHERE booking_id = :id')->execute(['id' => $bookingId]);
-                    $refunded = true;
+                } elseif ($newStatus === 'Cancelled') {
+                    if ((int) $booking['is_paid'] === 1) {
+                        // Refund a prepaid booking that's being declined/cancelled.
+                        $updateBalance->execute(['amount' => $amount, 'id' => $booking['learner_id']]);
+                        $insertTxn->execute(['user_id' => $booking['learner_id'], 'amount' => $amount, 'type' => 'Credit', 'booking_id' => $bookingId]);
+                        $db->prepare('UPDATE Booking SET is_paid = 0 WHERE booking_id = :id')->execute(['id' => $bookingId]);
+                        $refunded = true;
+                    }
+                    // Every tutor cancellation lands in the admin dispute queue
+                    // so an admin can follow up with both sides.
+                    if (($booking['dispute_status'] ?? 'none') === 'none') {
+                        $db->prepare("UPDATE Booking SET dispute_status = 'open', dispute_reason = :reason WHERE booking_id = :id")
+                           ->execute(['reason' => 'Auto-flagged: the tutor declined/cancelled this class.', 'id' => $bookingId]);
+                    }
                 }
             }
 

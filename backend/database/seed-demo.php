@@ -297,13 +297,16 @@ $insertVerif->execute(['uid' => $izzati, 'doc' => 'https://drive.google.com/file
 $insertVerif->execute(['uid' => $U('farah.aziz@graduate.utm.my'), 'doc' => 'https://drive.google.com/file/d/demo-farah-student-card', 'status' => 'Approved']);
 
 // ── 9. Merit requests (admin → Merits tab) ────────────────────────────────
+// All kept Pending: the admin reviews the snapshot + academic result, then
+// forwards the application to the UTM merit coordinator (no in-app decision).
 $insertMerit = $db->prepare(
-    "INSERT INTO MeritRequest (user_id, classes_completed, students_helped, avg_rating, review_count, status)
-     VALUES (:uid, :classes, :students, :rating, :reviews, :status)"
+    "INSERT INTO MeritRequest (user_id, classes_completed, students_helped, avg_rating, review_count, result_link, status)
+     VALUES (:uid, :classes, :students, :rating, :reviews, :result, 'Pending')"
 );
-$insertMerit->execute(['uid' => $aisyah, 'classes' => 22, 'students' => 17, 'rating' => 4.8, 'reviews' => 16, 'status' => 'Pending']);
-$insertMerit->execute(['uid' => $daniel, 'classes' => 20, 'students' => 21, 'rating' => 4.6, 'reviews' => 15, 'status' => 'Pending']);
-$insertMerit->execute(['uid' => $marcus, 'classes' => 25, 'students' => 20, 'rating' => 4.7, 'reviews' => 18, 'status' => 'Approved']);
+$transcript = fn(string $who): string => "https://drive.google.com/file/d/demo-{$who}-transcript/view";
+$insertMerit->execute(['uid' => $aisyah, 'classes' => 22, 'students' => 17, 'rating' => 4.8, 'reviews' => 16, 'result' => $transcript('aisyah')]);
+$insertMerit->execute(['uid' => $daniel, 'classes' => 20, 'students' => 21, 'rating' => 4.6, 'reviews' => 15, 'result' => $transcript('daniel')]);
+$insertMerit->execute(['uid' => $marcus, 'classes' => 25, 'students' => 20, 'rating' => 4.7, 'reviews' => 18, 'result' => $transcript('marcus')]);
 
 // ── 10. Favourites + a couple of friendly notifications ──────────────────
 $insertFav = $db->prepare("INSERT IGNORE INTO Favorite (user_id, tutor_id) VALUES (:uid, :tid)");

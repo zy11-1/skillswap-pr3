@@ -157,24 +157,6 @@ async function viewMerit(r) {
   }
 }
 
-// Decide a merit application in-app (Approve/Reject); the row flips from the
-// "Pending" filter into "Done" and the tutor is notified by the backend.
-const decidingMerit = ref(false)
-async function decideMerit(status) {
-  if (!viewingMerit.value) return
-  decidingMerit.value = true
-  try {
-    await api.reviewMerit(viewingMerit.value.merit_request_id, status)
-    const row = meritRequests.value.find(r => r.merit_request_id === viewingMerit.value.merit_request_id)
-    if (row) row.status = status
-    viewingMerit.value = null
-  } catch (err) {
-    alert(err.message || 'Could not update the application.')
-  } finally {
-    decidingMerit.value = false
-  }
-}
-
 function forwardMailto(detail) {
   const reviewLines = (detail.reviews || []).slice(0, 5)
     .map(r => `  - ${r.learner_name}: ${'★'.repeat(r.rating)} — "${r.comment || '—'}"`)
@@ -558,7 +540,7 @@ async function resolveDispute(bookingId, resolution) {
                   </td>
                   <td class="text-end">
                     <button class="btn btn-outline-primary btn-sm" @click="viewMerit(r)">
-                      <i class="bi bi-eye me-1"></i>{{ r.status === 'Pending' ? 'Review' : 'View' }}
+                      <i class="bi bi-eye me-1"></i>View
                     </button>
                   </td>
                 </tr>
@@ -815,18 +797,7 @@ async function resolveDispute(bookingId, resolution) {
         </div>
 
         <div class="modal-footer">
-          <template v-if="(viewingMerit.status || 'Pending') === 'Pending'">
-            <button class="btn btn-success" :disabled="decidingMerit" @click="decideMerit('Approved')">
-              <i class="bi bi-check-lg me-1"></i>Approve
-            </button>
-            <button class="btn btn-outline-danger" :disabled="decidingMerit" @click="decideMerit('Rejected')">
-              Reject
-            </button>
-          </template>
-          <span v-else class="badge me-auto" :class="viewingMerit.status === 'Approved' ? 'bg-success' : 'bg-secondary'">
-            {{ viewingMerit.status }}
-          </span>
-          <a :href="forwardMailto(viewingMerit)" class="btn btn-outline-primary">
+          <a :href="forwardMailto(viewingMerit)" class="btn btn-primary">
             <i class="bi bi-envelope me-1"></i>Forward to Approver
           </a>
           <button class="btn btn-outline-secondary" @click="viewingMerit = null">Close</button>

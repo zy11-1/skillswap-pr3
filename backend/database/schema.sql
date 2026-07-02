@@ -196,6 +196,7 @@ CREATE TABLE IF NOT EXISTS MeritRequest (
     students_helped   INT NOT NULL DEFAULT 0,
     avg_rating        DECIMAL(3,1) NOT NULL DEFAULT 0.0,
     review_count      INT NOT NULL DEFAULT 0,
+    result_link       VARCHAR(255) NULL,   -- tutor's academic result / transcript
     status            ENUM('Pending', 'Approved', 'Rejected') NOT NULL DEFAULT 'Pending',
     created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_merit_user FOREIGN KEY (user_id) REFERENCES User(user_id) ON DELETE CASCADE

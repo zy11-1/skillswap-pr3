@@ -201,14 +201,19 @@ foreach ($roster as $i => [$tid, $skill, $skillName, $base]) {
         $insertTxn->execute(['uid' => $lid, 'amount' => round($base * $len, 2), 'type' => 'Debit', 'bid' => $bid]);
     }
 
-    // One completed past class with a review.
+    // One completed past class with TWO students (so the grouped "all names
+    // on one card" view shows) and a review from the first.
     $slot = $makeSlot($tid, -(3 + $i), 14, $len, $base, $i % 2 ? 'Physical' : 'Online', $skill, "$skillName: recap, common pitfalls, and practice problems.");
-    $lid = $nextLearner($tid);
     $amount = round($base * $len, 2);
-    $bid = $makeBooking($lid, $tid, $skill, $slot, -(3 + $i), 14, $len, $amount, 'Completed');
-    $insertTxn->execute(['uid' => $lid, 'amount' => $amount, 'type' => 'Debit', 'bid' => $bid]);
-    $insertTxn->execute(['uid' => $tid, 'amount' => round($amount * 0.9, 2), 'type' => 'Credit', 'bid' => $bid]);
-    $insertReview->execute(['bid' => $bid, 'rating' => $ratings[$i], 'comment' => $reviews[$i]]);
+    foreach ([0, 1] as $k) {
+        $lid = $nextLearner($tid);
+        $bid = $makeBooking($lid, $tid, $skill, $slot, -(3 + $i), 14, $len, $amount, 'Completed');
+        $insertTxn->execute(['uid' => $lid, 'amount' => $amount, 'type' => 'Debit', 'bid' => $bid]);
+        $insertTxn->execute(['uid' => $tid, 'amount' => round($amount * 0.9, 2), 'type' => 'Credit', 'bid' => $bid]);
+        if ($k === 0) {
+            $insertReview->execute(['bid' => $bid, 'rating' => $ratings[$i], 'comment' => $reviews[$i]]);
+        }
+    }
 }
 
 // ── 5b. Ring pass: EVERY non-admin account gets a past + future class as

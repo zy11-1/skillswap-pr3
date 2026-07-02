@@ -65,6 +65,14 @@ const routes = [
     // Public: anyone with the invite link can view; booking prompts login.
   },
   {
+    // The class page: everything about one class (topic, roster, materials,
+    // links) — tutor sees it editable, enrolled students read-only.
+    path: '/class/:id',
+    name: 'class-detail',
+    component: () => import('@/views/ClassDetailView.vue'),
+    meta: { requiresAuth: true }
+  },
+  {
     path: '/tutor-dashboard',
     name: 'tutor-dashboard',
     component: () => import('@/views/tutor/TutorDashboardView.vue'),

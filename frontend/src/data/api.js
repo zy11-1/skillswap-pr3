@@ -82,6 +82,26 @@ async getUpcomingClasses() {
   return res.data
 },
 
+// The class page: slot + roster (tutor and enrolled students only).
+async getClassDetail(availabilityId) {
+  try {
+    const res = await http.get(`/api/classes/${availabilityId}`)
+    return res.data
+  } catch (err) {
+    throw unwrapError(err)
+  }
+},
+
+// Tutor group-messages everyone enrolled in a class.
+async announceToClass(availabilityId, message) {
+  try {
+    const res = await http.post(`/api/classes/${availabilityId}/announce`, { message })
+    return res.data
+  } catch (err) {
+    throw unwrapError(err)
+  }
+},
+
 async updateAvailability(availabilityId, data) {
   try {
     const res = await http.patch(`/api/tutor/availability/${availabilityId}`, data)

@@ -2,6 +2,7 @@
 import { onMounted, ref, computed } from 'vue'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/data/api'
+import TipBanner from '@/components/TipBanner.vue'
 
 const auth = useAuthStore()
 
@@ -540,11 +541,12 @@ onMounted(() => {
         <i class="bi bi-clock me-2"></i>My Availability
       </div>
       <div class="card-body">
-        <div class="alert alert-info py-1 small mb-3">
-          <i class="bi bi-info-circle me-1"></i>
-          Availability only applies to the <strong>next 7 days</strong>.
-          Students will only see and book within this window.
-        </div>
+        <TipBanner tip-id="tutor-slots">
+          Open a slot for any date and time — today, next week, or repeat it weekly. Students book and
+          prepay; the <strong>first student picks the topic</strong> from your skills, then you publish
+          "what you'll cover" so others can join. Everyone pays the same; the final price drops RM1 per
+          student and is refunded automatically after the class.
+        </TipBanner>
 
         <div v-if="loadingAvailability" class="text-center py-2">
           <div class="spinner-border spinner-border-sm text-primary-ss"></div>
@@ -776,9 +778,9 @@ onMounted(() => {
               <i class="bi bi-info-circle me-1"></i>
               The <strong>first student</strong> to book picks the topic; you then add what you'll cover and the
               class opens on the <strong>Upcoming Classes</strong> board for others to join.
-              Price starts at your base rate and drops RM1 for every extra person who books (min RM10/hr) —
-              earlier joiners are refunded the difference when the class finishes. Bookings are prepaid and wait
-              for your approval.
+              Every student pays the same (your base rate × hours); after the class the final price drops RM1
+              per student (never below RM10) and everyone is refunded the difference automatically. Bookings are
+              prepaid and wait for your approval.
               <template v-if="newSlot.visibility === 'Private'"><br />Private classes stay off the marketplace — use <strong>Copy invite link</strong> after adding.</template>
             </p>
           </div>

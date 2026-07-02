@@ -3,6 +3,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '@/data/api'
 import { useAuthStore } from '@/stores/auth'
+import TipBanner from '@/components/TipBanner.vue'
 
 const auth = useAuthStore()
 const router = useRouter()
@@ -92,9 +93,15 @@ function timeOf(b) {
 
 const selectedSessions = computed(() => (selectedDay.value ? byDay.value[selectedDay.value] || [] : []))
 
-// Clicking a session jumps to My Classes, where it can be managed/reviewed.
-function openSession() {
-  router.push('/bookings')
+// Clicking a session opens its class page (topic, students, materials,
+// links — everything in one place). Legacy non-slot bookings fall back
+// to My Classes.
+function openSession(b) {
+  if (b && b.availability_id) {
+    router.push(`/class/${b.availability_id}`)
+  } else {
+    router.push('/bookings')
+  }
 }
 
 // ---- Add a class straight from a calendar day (tutor only) ----
@@ -156,7 +163,7 @@ async function submitAdd() {
           <span class="badge cal-learn text-dark ms-1"><i class="bi bi-mortarboard me-1"></i>Learning</span>
         </p>
         <p class="text-muted mb-0 small mt-1">
-          <i class="bi bi-hand-index me-1"></i>Tap a day to see its sessions<template v-if="auth.isTutorMode"> or add a class</template>; tap a session to manage it.
+          <i class="bi bi-hand-index me-1"></i>Tap a day to see its sessions<template v-if="auth.isTutorMode"> or add a class</template>; tap a session to open its class page.
         </p>
       </div>
       <div class="btn-group btn-group-sm">
@@ -165,6 +172,11 @@ async function submitAdd() {
         <button class="btn btn-outline-secondary" @click="nextMonth"><i class="bi bi-chevron-right"></i></button>
       </div>
     </div>
+
+    <TipBanner tip-id="calendar-class-page">
+      Click any class in the calendar to open its full page — topic, students, materials, meeting
+      link, and messaging all live there.<template v-if="auth.isTutorMode"> As a tutor you can also tap any future day to open a new class slot on it.</template>
+    </TipBanner>
 
     <h5 class="fw-bold mb-3">{{ monthLabel }}</h5>
 
@@ -189,8 +201,8 @@ async function submitAdd() {
               :key="b.role + b.booking_id"
               class="cal-pill text-truncate"
               :class="b.role === 'tutor' ? 'cal-teach' : 'cal-learn'"
-              :title="(b.role === 'tutor' ? 'Teaching: ' : 'Learning: ') + b.skill_name + ' — open in My Classes'"
-              @click.stop="openSession()"
+              :title="(b.role === 'tutor' ? 'Teaching: ' : 'Learning: ') + b.skill_name + ' — open the class page'"
+              @click.stop="openSession(b)"
             >
               {{ timeOf(b) }} {{ b.skill_name }}
             </div>
@@ -217,7 +229,7 @@ async function submitAdd() {
           v-for="b in selectedSessions"
           :key="b.role + b.booking_id"
           class="list-group-item list-group-item-action d-flex justify-content-between align-items-center"
-          @click="openSession()"
+          @click="openSession(b)"
         >
           <span>
             <span class="badge me-2" :class="b.role === 'tutor' ? 'cal-teach text-dark' : 'cal-learn text-dark'">
@@ -282,7 +294,8 @@ async function submitAdd() {
             {{ addingClass ? 'Adding…' : 'Add class' }}
           </button>
           <p class="text-muted small mt-2 mb-0">
-            <i class="bi bi-info-circle me-1"></i>The first student to book sets the topic; price drops RM1 per extra person (min RM10/hr).
+            <i class="bi bi-info-circle me-1"></i>The first student to book sets the topic and everyone pays the same price;
+            the final price drops RM1 per student (never below RM10) and is auto-refunded after the class.
           </p>
         </div>
       </div>

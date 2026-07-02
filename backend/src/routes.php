@@ -49,6 +49,12 @@ return function (App $app) {
     $app->get('/api/slots/{token}', [TutorController::class, 'slotByToken']);
     // Marketplace "Upcoming classes" board: started + published public classes (public)
     $app->get('/api/classes/upcoming', [TutorController::class, 'upcomingClasses']);
+    // The class page: slot + roster, for the tutor and enrolled students
+    $app->get('/api/classes/{id:[0-9]+}', [TutorController::class, 'classDetail'])
+        ->add($jwtMiddleware);
+    // Tutor group-messages everyone enrolled in the class
+    $app->post('/api/classes/{id:[0-9]+}/announce', [TutorController::class, 'announceToClass'])
+        ->add($jwtMiddleware);
     // ---------------------------------------------------------------
 // Tutor Availability
 // ---------------------------------------------------------------

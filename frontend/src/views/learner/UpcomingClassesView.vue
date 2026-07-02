@@ -72,7 +72,7 @@ onMounted(loadData)
   <div class="container py-4">
     <div class="mb-4">
       <h3 class="fw-bold"><i class="bi bi-calendar-event text-primary-ss me-2"></i>Upcoming classes</h3>
-      <p class="text-muted">Classes other students started — join in, and the price drops RM1 for every extra person who books.</p>
+      <p class="text-muted">Classes other students started — join in. Everyone pays the same, and the final price drops RM1 for every student, refunded automatically after the class.</p>
     </div>
 
     <!-- Loading -->

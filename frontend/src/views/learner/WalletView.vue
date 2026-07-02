@@ -4,6 +4,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useWalletStore } from '@/stores/wallet'
 import { useCardsStore } from '@/stores/cards'
 import { api } from '@/data/api'
+import TipBanner from '@/components/TipBanner.vue'
 
 const auth = useAuthStore()
 const wallet = useWalletStore()
@@ -97,6 +98,11 @@ async function submitMoney() {
   <div class="container py-4">
     <h3 class="fw-bold mb-1">My Wallet</h3>
     <p class="text-muted">Top up from a linked card, spend on classes, and withdraw what you earn.</p>
+
+    <TipBanner tip-id="wallet-how">
+      Class bookings are prepaid from this balance. Refunds — a declined booking, a cancelled class, or
+      the automatic price drop after a class fills up — land back here by themselves, with a notification.
+    </TipBanner>
 
     <div class="card wallet-card mb-4">
       <div class="card-body p-4">

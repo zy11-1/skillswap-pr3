@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { api } from '@/data/api'
 import TutorCard from '@/components/tutor/TutorCard.vue'
+import TipBanner from '@/components/TipBanner.vue'
 import { useFavoritesStore } from '@/stores/favorites'
 
 const favorites = useFavoritesStore()
@@ -98,6 +99,13 @@ function resetFilters() {
       <h3 class="fw-bold">Find a Tutor</h3>
       <p class="text-muted">Browse skills offered by your fellow students</p>
     </div>
+
+    <TipBanner tip-id="marketplace-how">
+      Pick a tutor to see their open time slots. Book an empty slot and <strong>you choose the topic</strong>
+      from their skills; join a started class and the topic's already set. You prepay when booking (refunded
+      in full if the tutor declines) and everyone pays the same — the final price drops RM1 per student,
+      refunded automatically after the class.
+    </TipBanner>
 
     <!-- Favourite tutors (pinned) -->
     <div v-if="!loading && favoriteTutors.length" class="mb-4">

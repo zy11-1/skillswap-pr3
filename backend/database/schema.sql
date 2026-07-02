@@ -155,6 +155,7 @@ CREATE TABLE IF NOT EXISTS TutorAvailability (
     status ENUM('Active', 'Cancelled') NOT NULL DEFAULT 'Active',
     visibility ENUM('Public', 'Private') NOT NULL DEFAULT 'Public',
     share_token VARCHAR(40) NULL,      -- invite link token for Private slots
+    follow_up_link VARCHAR(255) NULL,  -- invite link to the follow-up class ("part 2")
     locked_skill_id INT NULL,          -- topic, chosen by the first student to book
     topics_covered TEXT NULL,          -- tutor's syllabus, required once topic is locked
     needs_syllabus TINYINT(1) NOT NULL DEFAULT 0,  -- 1 = topic set but syllabus not written yet

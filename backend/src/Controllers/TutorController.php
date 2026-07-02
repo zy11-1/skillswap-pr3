@@ -286,6 +286,121 @@ class TutorController
     }
 
     /**
+     * GET /api/classes/{id} (requires JWT)
+     * The full class page: slot details, tutor, and every student enrolled.
+     * Visible to the tutor who owns it and to anyone with a booking on it.
+     */
+    public function classDetail(Request $request, Response $response, array $args): Response
+    {
+        $availabilityId = (int) $args['id'];
+        $viewerId = (int) $request->getAttribute('user_id');
+        $db = Database::getConnection();
+
+        $stmt = $db->prepare(
+            "SELECT ta.*, u.name AS tutor_name, u.photo_url AS tutor_photo, u.faculty AS tutor_faculty,
+                    sk.name AS locked_skill_name,
+                    (SELECT COUNT(*) FROM Booking b
+                     WHERE b.availability_id = ta.availability_id AND b.status <> 'Cancelled') AS seats_taken
+             FROM TutorAvailability ta
+             JOIN User u ON u.user_id = ta.tutor_id
+             LEFT JOIN Skill sk ON sk.skill_id = ta.locked_skill_id
+             WHERE ta.availability_id = :id"
+        );
+        $stmt->execute(['id' => $availabilityId]);
+        $slot = $stmt->fetch();
+
+        if (!$slot) {
+            return $this->json($response, ['error' => 'Class not found.'], 404);
+        }
+
+        $isOwner = (int) $slot['tutor_id'] === $viewerId;
+
+        // Everyone on the roster, newest last.
+        $stmt = $db->prepare(
+            "SELECT b.booking_id, b.learner_id, b.status, b.total_amount, b.recording_url,
+                    u.name AS learner_name, u.photo_url AS learner_photo
+             FROM Booking b JOIN User u ON u.user_id = b.learner_id
+             WHERE b.availability_id = :id
+             ORDER BY b.booking_id"
+        );
+        $stmt->execute(['id' => $availabilityId]);
+        $students = $stmt->fetchAll();
+
+        $myBooking = null;
+        foreach ($students as &$s) {
+            $s['booking_id'] = (int) $s['booking_id'];
+            $s['learner_id'] = (int) $s['learner_id'];
+            $s['total_amount'] = (float) $s['total_amount'];
+            if ($s['learner_id'] === $viewerId && $s['status'] !== 'Cancelled') {
+                $myBooking = $s;
+            }
+        }
+        unset($s);
+
+        if (!$isOwner && $myBooking === null) {
+            return $this->json($response, ['error' => 'Only the tutor and enrolled students can view this class.'], 403);
+        }
+
+        $this->decorateSlot($slot);
+        $slot['tutor_id'] = (int) $slot['tutor_id'];
+        // The invite token is the owner's to share, nobody else's.
+        if (!$isOwner) {
+            unset($slot['share_token']);
+        }
+
+        return $this->json($response, ['data' => [
+            'slot' => $slot,
+            'students' => $students,
+            'is_owner' => $isOwner,
+            'my_booking_id' => $myBooking ? $myBooking['booking_id'] : null,
+        ]], 200);
+    }
+
+    /**
+     * POST /api/classes/{id}/announce (requires JWT, owner only)
+     * Body: { message }
+     * Group-messages every student with an active booking on this class.
+     */
+    public function announceToClass(Request $request, Response $response, array $args): Response
+    {
+        $availabilityId = (int) $args['id'];
+        $userId = (int) $request->getAttribute('user_id');
+        $data = (array) $request->getParsedBody();
+        $message = trim((string) ($data['message'] ?? ''));
+
+        if ($message === '') {
+            return $this->json($response, ['error' => 'A message is required.'], 422);
+        }
+        if (mb_strlen($message) > 1000) {
+            return $this->json($response, ['error' => 'Keep the message under 1000 characters.'], 422);
+        }
+
+        $db = Database::getConnection();
+        $stmt = $db->prepare('SELECT tutor_id FROM TutorAvailability WHERE availability_id = :id');
+        $stmt->execute(['id' => $availabilityId]);
+        $tutorId = $stmt->fetchColumn();
+
+        if (!$tutorId) {
+            return $this->json($response, ['error' => 'Class not found.'], 404);
+        }
+        if ((int) $tutorId !== $userId) {
+            return $this->json($response, ['error' => 'Only the tutor can message the whole class.'], 403);
+        }
+
+        $stmt = $db->prepare(
+            "SELECT DISTINCT learner_id FROM Booking WHERE availability_id = :id AND status <> 'Cancelled'"
+        );
+        $stmt->execute(['id' => $availabilityId]);
+        $learnerIds = array_map('intval', array_column($stmt->fetchAll(), 'learner_id'));
+
+        foreach ($learnerIds as $lid) {
+            \App\Controllers\MessageController::notify($db, $userId, $lid, $message, 'chat');
+        }
+
+        return $this->json($response, ['data' => ['sent_to' => count($learnerIds)]], 200);
+    }
+
+    /**
      * GET /api/tutors/{id}/availability
      * Returns the tutor's available time slots (future only).
      */
@@ -308,7 +423,7 @@ class TutorController
         $stmt = $db->prepare(
             "SELECT ta.availability_id, ta.tutor_id, ta.available_date, ta.start_time, ta.end_time, ta.capacity,
                     ta.base_price, ta.mode, ta.meeting_link, ta.location, ta.resources, ta.outcomes, ta.status,
-                    ta.visibility, ta.share_token, ta.locked_skill_id, ta.topics_covered, ta.needs_syllabus,
+                    ta.visibility, ta.share_token, ta.follow_up_link, ta.locked_skill_id, ta.topics_covered, ta.needs_syllabus,
                     sk.name AS locked_skill_name,
                     (SELECT COUNT(*) FROM Booking b
                      WHERE b.availability_id = ta.availability_id AND b.status <> 'Cancelled') AS seats_taken,
@@ -591,6 +706,10 @@ class TutorController
         $location = array_key_exists('location', $data) ? trim((string) $data['location']) : (string) ($slot['location'] ?? '');
         $resources = array_key_exists('resources', $data) ? trim((string) $data['resources']) : (string) ($slot['resources'] ?? '');
         $outcomes = array_key_exists('outcomes', $data) ? trim((string) $data['outcomes']) : (string) ($slot['outcomes'] ?? '');
+        $followUpLink = array_key_exists('follow_up_link', $data) ? trim((string) $data['follow_up_link']) : (string) ($slot['follow_up_link'] ?? '');
+        if ($followUpLink !== '' && !filter_var($followUpLink, FILTER_VALIDATE_URL)) {
+            return $this->json($response, ['error' => 'follow_up_link must be a valid URL.'], 422);
+        }
         $visibility = array_key_exists('visibility', $data)
             ? (($data['visibility'] === 'Private') ? 'Private' : 'Public')
             : $slot['visibility'];
@@ -629,7 +748,7 @@ class TutorController
              SET capacity = :capacity, base_price = :base_price, start_time = :start_time, end_time = :end_time,
                  mode = :mode, meeting_link = :meeting_link,
                  location = :location, resources = :resources, outcomes = :outcomes,
-                 visibility = :visibility, share_token = :share_token
+                 visibility = :visibility, share_token = :share_token, follow_up_link = :follow_up_link
              WHERE availability_id = :id'
         );
         $stmt->execute([
@@ -644,6 +763,7 @@ class TutorController
             'outcomes' => $outcomes === '' ? null : $outcomes,
             'visibility' => $visibility,
             'share_token' => $shareToken,
+            'follow_up_link' => $followUpLink === '' ? null : $followUpLink,
             'id' => $availabilityId,
         ]);
 
@@ -670,15 +790,16 @@ class TutorController
             || $outcomes !== (string) ($slot['outcomes'] ?? '')
             || $meetingLink !== (string) ($slot['meeting_link'] ?? '')
             || $location !== (string) ($slot['location'] ?? '');
-        if ($detailsChanged) {
+        $followUpAdded = $followUpLink !== '' && $followUpLink !== (string) ($slot['follow_up_link'] ?? '');
+        if ($detailsChanged || $followUpAdded) {
             $when = $slot['available_date'] . ' ' . substr($slot['start_time'], 0, 5);
+            $body = $followUpAdded
+                ? "Your tutor shared a follow-up class for your session on $when — open the class page to grab your seat for part 2."
+                : "Your tutor updated the details/materials for your session on $when.";
             $stmt = $db->prepare("SELECT DISTINCT learner_id FROM Booking WHERE availability_id = :id AND status <> 'Cancelled'");
             $stmt->execute(['id' => $availabilityId]);
             foreach ($stmt->fetchAll() as $row) {
-                \App\Controllers\MessageController::notify(
-                    $db, $userId, (int) $row['learner_id'],
-                    "Your tutor updated the details/materials for your session on $when."
-                );
+                \App\Controllers\MessageController::notify($db, $userId, (int) $row['learner_id'], $body);
             }
         }
 

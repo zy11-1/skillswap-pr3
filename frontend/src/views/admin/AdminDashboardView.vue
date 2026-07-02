@@ -1,6 +1,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { api, apiBaseUrl } from '@/data/api'
+import TipBanner from '@/components/TipBanner.vue'
 
 // ── data ──────────────────────────────────────────────────────────────────────
 const stats          = ref(null)
@@ -214,6 +215,13 @@ async function resolveDispute(bookingId, resolution) {
   <div class="container py-4">
     <h3 class="fw-bold mb-1">Admin Control Panel</h3>
     <p class="text-muted mb-3">Platform oversight and moderation</p>
+
+    <TipBanner tip-id="admin-how">
+      <strong>Disputes</strong> collects every learner report and every tutor cancellation automatically —
+      resolve with a refund or close it. <strong>Verifications</strong> and <strong>Merits</strong> wait for
+      your approve/reject. Class payments settle themselves; the bell just keeps you informed ("no action
+      needed" notices).
+    </TipBanner>
 
     <!-- Tab nav -->
     <ul class="nav nav-tabs mb-4">

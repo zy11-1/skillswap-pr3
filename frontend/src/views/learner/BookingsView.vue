@@ -1,13 +1,16 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { useBookingStore } from '@/stores/booking'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/data/api'
 import ReviewModal from '@/components/review/ReviewModal.vue'
+import TipBanner from '@/components/TipBanner.vue'
 import { downloadBookingIcs } from '@/utils/ics'
 
 const bookingStore = useBookingStore()
 const auth = useAuthStore()
+const router = useRouter()
 
 const statusFilter = ref('All')
 const statuses = ['All', 'Pending', 'Accepted', 'Completed', 'Cancelled']
@@ -45,6 +48,35 @@ const filteredBookings = computed(() => {
   if (statusFilter.value === 'All') return list.value
   return list.value.filter((b) => b.status === statusFilter.value)
 })
+
+// Tutor cards: completed classes on the same slot collapse into ONE card
+// listing everyone who took it; everything else stays one card per booking.
+const tutorCards = computed(() => {
+  const cards = []
+  const groups = {}
+  for (const b of filteredBookings.value) {
+    if (b.status === 'Completed' && b.availability_id) {
+      let g = groups[b.availability_id]
+      if (!g) {
+        g = { key: `slot-${b.availability_id}`, rep: b, students: [] }
+        groups[b.availability_id] = g
+        cards.push(g)
+      }
+      g.students.push(b)
+    } else {
+      cards.push({ key: `bk-${b.booking_id}`, rep: b, students: [b] })
+    }
+  }
+  return cards
+})
+
+// Quick chat with a student — jumps straight into the message thread.
+function messageStudent(b) {
+  router.push({ path: '/messages', query: { to: b.learner_id, name: b.learner_name } })
+}
+function openClassPage(b) {
+  if (b.availability_id) router.push(`/class/${b.availability_id}`)
+}
 
 // A session is reviewable once its end time has passed (and it actually ran).
 function sessionEnded(b) {
@@ -104,11 +136,16 @@ async function saveTopic(b) {
 
 const recordingDrafts = ref({})
 const savingRecording = ref(null)
-async function saveRecording(b) {
-  const url = (recordingDrafts.value[b.booking_id] ?? b.recording_url ?? '').trim()
-  savingRecording.value = b.booking_id
+// Saves the recording link to every booking in the card (a grouped completed
+// class shares one recording across all its students).
+async function saveRecording(card) {
+  const rep = card.rep
+  const url = (recordingDrafts.value[rep.booking_id] ?? rep.recording_url ?? '').trim()
+  savingRecording.value = rep.booking_id
   try {
-    await api.setBookingRecording(b.booking_id, url)
+    for (const s of card.students) {
+      await api.setBookingRecording(s.booking_id, url)
+    }
     await bookingStore.fetchAsTutor()
   } catch (err) {
     alert(err.message || 'Could not save recording link.')
@@ -179,6 +216,17 @@ function formatDate(dateStr) {
       {{ auth.isTutorMode ? 'Sessions you teach' : 'Sessions you booked' }}
     </p>
 
+    <TipBanner v-if="auth.isTutorMode" tip-id="my-classes-tutor">
+      Accept or decline requests here — declines refund the student instantly. Classes complete
+      themselves when they end (refunds and your payout are automatic). Use the chat icon next to a
+      student's name to message them, or "Class page" for topics, materials, and group messages.
+    </TipBanner>
+    <TipBanner v-else tip-id="my-classes-learner">
+      Your booked classes live here. Once a class ends you can review the tutor, and if it filled up
+      you're automatically refunded down to the final price. Use "Report issue" if something went wrong
+      — an admin will step in.
+    </TipBanner>
+
     <div class="d-flex flex-wrap gap-2 mb-4">
       <button
         v-for="s in statuses"
@@ -196,87 +244,99 @@ function formatDate(dateStr) {
     </div>
 
     <div v-else-if="filteredBookings.length">
-      <!-- TUTOR view: roomy cards so each session's actions have space -->
+      <!-- TUTOR view: roomy cards; completed classes group all their students -->
       <div v-if="auth.isTutorMode" class="d-flex flex-column gap-3">
-        <div v-for="b in filteredBookings" :key="b.booking_id" class="card border-0 shadow-sm tutor-class-card">
+        <div v-for="card in tutorCards" :key="card.key" class="card border-0 shadow-sm tutor-class-card">
           <div class="card-body">
             <div class="d-flex justify-content-between align-items-start mb-2">
               <div>
-                <h6 class="mb-0 fw-bold"><i class="bi bi-person-circle me-1 text-primary-ss"></i>{{ b.learner_name }}</h6>
-                <span class="small text-muted">{{ b.skill_name }}</span>
+                <!-- One student per card while live; everyone together once completed -->
+                <div v-for="s in card.students" :key="s.booking_id" class="d-flex align-items-center gap-2 mb-1">
+                  <h6 class="mb-0 fw-bold"><i class="bi bi-person-circle me-1 text-primary-ss"></i>{{ s.learner_name }}</h6>
+                  <button
+                    class="btn btn-outline-primary btn-sm py-0 px-1"
+                    title="Message this student"
+                    @click="messageStudent(s)"
+                  ><i class="bi bi-chat-dots"></i></button>
+                </div>
+                <span class="small text-muted">{{ card.rep.skill_name }}</span>
+                <span v-if="card.students.length > 1" class="badge bg-info-subtle text-info-emphasis ms-1">
+                  {{ card.students.length }} students
+                </span>
               </div>
-              <span :class="statusClass(b.status)">{{ b.status }}</span>
+              <span :class="statusClass(card.rep.status)">{{ card.rep.status }}</span>
             </div>
             <div class="d-flex flex-wrap gap-3 small text-muted mb-3 align-items-center">
-              <span><i class="bi bi-clock me-1"></i>{{ formatDate(b.booking_date) }} · {{ b.duration }}h</span>
-              <span v-if="b.slot_mode" :class="b.slot_mode === 'Online' ? 'text-primary' : 'text-success'">
-                <i :class="b.slot_mode === 'Online' ? 'bi bi-camera-video' : 'bi bi-geo-alt'" class="me-1"></i>{{ b.slot_mode }}
-                <template v-if="b.slot_mode === 'Physical' && b.slot_location"> · {{ b.slot_location }}</template>
+              <span><i class="bi bi-clock me-1"></i>{{ formatDate(card.rep.booking_date) }} · {{ card.rep.duration }}h</span>
+              <span v-if="card.rep.slot_mode" :class="card.rep.slot_mode === 'Online' ? 'text-primary' : 'text-success'">
+                <i :class="card.rep.slot_mode === 'Online' ? 'bi bi-camera-video' : 'bi bi-geo-alt'" class="me-1"></i>{{ card.rep.slot_mode }}
+                <template v-if="card.rep.slot_mode === 'Physical' && card.rep.slot_location"> · {{ card.rep.slot_location }}</template>
               </span>
-              <span class="fw-semibold text-dark"><i class="bi bi-wallet2 me-1"></i>RM{{ Number(b.total_amount).toFixed(2) }}</span>
-              <a v-if="b.slot_mode === 'Online' && b.meeting_link" :href="b.meeting_link" target="_blank" rel="noopener">
+              <span class="fw-semibold text-dark"><i class="bi bi-wallet2 me-1"></i>RM{{ Number(card.rep.total_amount).toFixed(2) }}</span>
+              <a v-if="card.rep.slot_mode === 'Online' && card.rep.meeting_link" :href="card.rep.meeting_link" target="_blank" rel="noopener">
                 <i class="bi bi-box-arrow-up-right me-1"></i>Join meeting
               </a>
               <button
-                v-if="b.status === 'Accepted' || b.status === 'Completed'"
+                v-if="card.rep.status === 'Accepted' || card.rep.status === 'Completed'"
                 class="btn btn-link btn-sm p-0"
                 title="Add to calendar (.ics)"
-                @click="downloadBookingIcs(b)"
+                @click="downloadBookingIcs(card.rep)"
               ><i class="bi bi-calendar-plus me-1"></i>Add to calendar</button>
+              <button
+                v-if="card.rep.availability_id"
+                class="btn btn-link btn-sm p-0"
+                title="Open the class page"
+                @click="openClassPage(card.rep)"
+              ><i class="bi bi-box-arrow-up-right me-1"></i>Class page</button>
             </div>
 
             <!-- Lifecycle actions -->
-            <div v-if="b.status === 'Pending'" class="d-flex gap-2">
-              <button class="btn btn-success btn-sm" :disabled="updatingId === b.booking_id" @click="respond(b.booking_id, 'Accepted')">
+            <div v-if="card.rep.status === 'Pending'" class="d-flex gap-2">
+              <button class="btn btn-success btn-sm" :disabled="updatingId === card.rep.booking_id" @click="respond(card.rep.booking_id, 'Accepted')">
                 <i class="bi bi-check-lg me-1"></i>Accept
               </button>
-              <button class="btn btn-outline-danger btn-sm" :disabled="updatingId === b.booking_id" @click="respond(b.booking_id, 'Cancelled')">
+              <button class="btn btn-outline-danger btn-sm" :disabled="updatingId === card.rep.booking_id" @click="respond(card.rep.booking_id, 'Cancelled')">
                 <i class="bi bi-x-lg me-1"></i>Decline
               </button>
             </div>
-            <button
-              v-else-if="b.status === 'Accepted'"
-              class="btn btn-primary btn-sm"
-              :disabled="updatingId === b.booking_id"
-              @click="respond(b.booking_id, 'Completed')"
-            >
-              <i class="bi bi-flag me-1"></i>Mark completed
-            </button>
-            <div v-else-if="b.status === 'Completed'">
-              <label class="form-label small mb-1 text-muted">Session recording link (optional)</label>
+            <p v-else-if="card.rep.status === 'Accepted'" class="small text-muted mb-0">
+              <i class="bi bi-magic me-1"></i>Completes automatically when the class ends — refunds and your payout settle themselves.
+            </p>
+            <div v-else-if="card.rep.status === 'Completed'">
+              <label class="form-label small mb-1 text-muted">Session recording link (shared with everyone in this class)</label>
               <div class="input-group input-group-sm" style="max-width: 420px">
                 <input
-                  :value="recordingDrafts[b.booking_id] ?? b.recording_url ?? ''"
+                  :value="recordingDrafts[card.rep.booking_id] ?? card.rep.recording_url ?? ''"
                   type="url"
                   class="form-control"
                   placeholder="https://… (Zoom/Meet recording)"
-                  @input="recordingDrafts[b.booking_id] = $event.target.value"
+                  @input="recordingDrafts[card.rep.booking_id] = $event.target.value"
                 />
-                <button class="btn btn-outline-primary" :disabled="savingRecording === b.booking_id" @click="saveRecording(b)">
-                  {{ savingRecording === b.booking_id ? '...' : 'Save' }}
+                <button class="btn btn-outline-primary" :disabled="savingRecording === card.rep.booking_id" @click="saveRecording(card)">
+                  {{ savingRecording === card.rep.booking_id ? '...' : 'Save' }}
                 </button>
               </div>
-              <a v-if="b.recording_url" :href="b.recording_url" target="_blank" rel="noopener" class="small d-inline-block mt-1">
+              <a v-if="card.rep.recording_url" :href="card.rep.recording_url" target="_blank" rel="noopener" class="small d-inline-block mt-1">
                 <i class="bi bi-camera-video me-1"></i>Watch current recording
               </a>
             </div>
 
             <!-- Edit the class topic / agenda inline (slot-based classes only) -->
-            <div v-if="b.availability_id && (b.status === 'Accepted' || b.status === 'Completed')" class="mt-3 pt-2 border-top">
+            <div v-if="card.rep.availability_id && (card.rep.status === 'Accepted' || card.rep.status === 'Completed')" class="mt-3 pt-2 border-top">
               <label class="form-label small text-muted mb-1">
                 <i class="bi bi-bookmark me-1"></i>Topic / what you'll cover
               </label>
               <div class="input-group input-group-sm" style="max-width: 520px">
                 <input
-                  :value="topicDrafts[b.booking_id] ?? b.slot_topics ?? ''"
+                  :value="topicDrafts[card.rep.booking_id] ?? card.rep.slot_topics ?? ''"
                   type="text"
                   class="form-control"
                   placeholder="e.g. Vue.js — Part 2: components & props"
-                  @input="topicDrafts[b.booking_id] = $event.target.value"
-                  @keyup.enter="saveTopic(b)"
+                  @input="topicDrafts[card.rep.booking_id] = $event.target.value"
+                  @keyup.enter="saveTopic(card.rep)"
                 />
-                <button class="btn btn-outline-primary" :disabled="savingTopic === b.booking_id" @click="saveTopic(b)">
-                  {{ savingTopic === b.booking_id ? '...' : 'Update topic' }}
+                <button class="btn btn-outline-primary" :disabled="savingTopic === card.rep.booking_id" @click="saveTopic(card.rep)">
+                  {{ savingTopic === card.rep.booking_id ? '...' : 'Update topic' }}
                 </button>
               </div>
               <span class="text-muted" style="font-size:.7rem">Updates this class for everyone enrolled.</span>

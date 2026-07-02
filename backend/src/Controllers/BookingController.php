@@ -40,6 +40,11 @@ class BookingController
 
         $db = Database::getConnection();
 
+        // Classes settle themselves: any accepted class whose end time has
+        // passed is completed here (refunds + payout + notifications), so
+        // tutors never have to press a "mark complete" button.
+        $this->settleOverdueClasses($db);
+
         $stmt = $db->prepare("
             SELECT b.*, learner.name AS learner_name, tutor.name AS tutor_name, s.name AS skill_name,
                    r.review_id, r.rating AS review_rating, r.comment AS review_comment,
@@ -431,43 +436,7 @@ class BookingController
         }
 
         if ($groupResult !== null) {
-            // Group completion: tell every attendee their final price + any
-            // refund, and close out anyone whose request was never approved.
-            $remindAt = date('Y-m-d H:i:s', time() + 86400);
-            foreach ($groupResult['completed'] as $c) {
-                $msg = 'Your group class is complete. Final price: RM' . number_format($c['final'], 2) . '.';
-                if ($c['refund'] > 0) {
-                    $msg .= ' As the class filled up, RM' . number_format($c['refund'], 2) . ' was refunded to your wallet.';
-                }
-                \App\Controllers\MessageController::notify($db, (int) $booking['tutor_id'], $c['learner_id'], $msg);
-                \App\Controllers\MessageController::notify(
-                    $db, (int) $booking['tutor_id'], $c['learner_id'],
-                    'How was your recent session? Leave a quick review in My Classes.',
-                    'booking', $remindAt
-                );
-            }
-            foreach ($groupResult['cancelled'] as $c) {
-                \App\Controllers\MessageController::notify(
-                    $db, (int) $booking['tutor_id'], $c['learner_id'],
-                    'The session ended before your request was approved, so it was closed and RM' . number_format($c['refund'], 2) . ' refunded to your wallet.'
-                );
-            }
-            // The auto-settlement needs no admin action, but the admin is
-            // kept in the loop with a summary of what the system refunded.
-            $adminId = (int) $db->query("SELECT user_id FROM User WHERE role = 'admin' ORDER BY user_id LIMIT 1")->fetchColumn();
-            if ($adminId) {
-                $n = count($groupResult['completed']);
-                $refundSum = array_sum(array_column($groupResult['completed'], 'refund'));
-                \App\Controllers\MessageController::notify(
-                    $db, (int) $booking['tutor_id'], $adminId,
-                    'Auto-settlement: "' . $groupResult['skill_name'] . '" class completed with '
-                    . $n . ' student' . ($n === 1 ? '' : 's')
-                    . ' — final price RM' . number_format($groupResult['final_total'], 2) . ' each'
-                    . ($refundSum > 0.001 ? ', RM' . number_format($refundSum, 2) . ' refunded automatically' : '')
-                    . '. No action needed.',
-                    'system'
-                );
-            }
+            $this->notifySettlement($db, $groupResult);
         } else {
             // Single booking: notify the learner of the tutor's decision.
             $verb = ['Accepted' => 'accepted', 'Cancelled' => 'declined/cancelled', 'Completed' => 'marked completed'][$newStatus] ?? strtolower($newStatus);
@@ -488,6 +457,80 @@ class BookingController
 
         $updated = $this->fetchBookingById($db, $bookingId);
         return $this->json($response, ['data' => $updated], 200);
+    }
+
+    /**
+     * Auto-settle every accepted slot-based class whose end time has passed.
+     * Called lazily when bookings are read, so classes complete themselves —
+     * refunds, tutor payout, and all notifications — with no tutor action.
+     */
+    private function settleOverdueClasses(\PDO $db): void
+    {
+        $slotIds = $db->query(
+            "SELECT DISTINCT b.availability_id
+             FROM Booking b
+             JOIN TutorAvailability ta ON ta.availability_id = b.availability_id
+             WHERE b.status IN ('Accepted', 'Pending')
+               AND TIMESTAMP(ta.available_date, ta.end_time) < NOW()"
+        )->fetchAll(\PDO::FETCH_COLUMN);
+
+        foreach ($slotIds as $slotId) {
+            $db->beginTransaction();
+            try {
+                $result = $this->completeGroupSlot($db, (int) $slotId);
+                $db->commit();
+            } catch (\Throwable $e) {
+                $db->rollBack();
+                error_log('Auto-settlement failed for slot ' . $slotId . ': ' . $e->getMessage());
+                continue;
+            }
+            $this->notifySettlement($db, $result);
+        }
+    }
+
+    /**
+     * Post-settlement notifications: each attendee's final price + refund,
+     * closures for never-approved requests, and the admin's informational
+     * summary ("no action needed").
+     */
+    private function notifySettlement(\PDO $db, array $groupResult): void
+    {
+        $tutorId = (int) $groupResult['tutor_id'];
+        $remindAt = date('Y-m-d H:i:s', time() + 86400);
+        foreach ($groupResult['completed'] as $c) {
+            $msg = 'Your group class is complete. Final price: RM' . number_format($c['final'], 2) . '.';
+            if ($c['refund'] > 0) {
+                $msg .= ' As the class filled up, RM' . number_format($c['refund'], 2) . ' was refunded to your wallet.';
+            }
+            \App\Controllers\MessageController::notify($db, $tutorId, $c['learner_id'], $msg);
+            \App\Controllers\MessageController::notify(
+                $db, $tutorId, $c['learner_id'],
+                'How was your recent session? Leave a quick review in My Classes.',
+                'booking', $remindAt
+            );
+        }
+        foreach ($groupResult['cancelled'] as $c) {
+            \App\Controllers\MessageController::notify(
+                $db, $tutorId, $c['learner_id'],
+                'The session ended before your request was approved, so it was closed and RM' . number_format($c['refund'], 2) . ' refunded to your wallet.'
+            );
+        }
+        // The auto-settlement needs no admin action, but the admin is
+        // kept in the loop with a summary of what the system refunded.
+        $adminId = (int) $db->query("SELECT user_id FROM User WHERE role = 'admin' ORDER BY user_id LIMIT 1")->fetchColumn();
+        if ($adminId) {
+            $n = count($groupResult['completed']);
+            $refundSum = array_sum(array_column($groupResult['completed'], 'refund'));
+            \App\Controllers\MessageController::notify(
+                $db, $tutorId, $adminId,
+                'Auto-settlement: "' . $groupResult['skill_name'] . '" class completed with '
+                . $n . ' student' . ($n === 1 ? '' : 's')
+                . ' — final price RM' . number_format($groupResult['final_total'], 2) . ' each'
+                . ($refundSum > 0.001 ? ', RM' . number_format($refundSum, 2) . ' refunded automatically' : '')
+                . '. No action needed.',
+                'system'
+            );
+        }
     }
 
     /**

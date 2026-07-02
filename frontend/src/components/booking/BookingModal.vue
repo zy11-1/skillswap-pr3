@@ -131,7 +131,9 @@ onMounted(loadSlots)
                 </span>
                 <span class="text-end">
                   <span class="fw-bold text-primary-ss">RM{{ Number(slot.next_price).toFixed(2) }}</span>
-                  <span class="d-block text-muted" style="font-size:.65rem">price drops as it fills</span>
+                  <span class="d-block text-muted" style="font-size:.65rem">
+                    final if you join: RM{{ Number(slot.projected_price_join).toFixed(2) }}
+                  </span>
                 </span>
               </div>
 
@@ -167,9 +169,10 @@ onMounted(loadSlots)
 
           <p class="text-muted small">
             <i class="bi bi-info-circle me-1"></i>
-            The first student picks the topic; everyone else joins it. The price drops RM1 for each
-            extra person who books (min RM10/hr) — you’ll be <strong>refunded the difference</strong> as
-            more people join. Every booking waits for the tutor's approval.
+            The first student picks the topic; everyone else joins it and pays the same price. The final
+            price drops RM1 for every student in the class (never below RM10) — after the class runs,
+            everyone is <strong>automatically refunded the difference</strong>. Every booking waits for
+            the tutor's approval.
           </p>
 
           <!-- First booker picks the topic for an open slot -->
@@ -187,7 +190,8 @@ onMounted(loadSlots)
           <div v-if="confirming && selectedSlot" class="alert alert-warning py-2 small">
             <i class="bi bi-wallet2 me-1"></i>
             <strong>RM{{ Number(selectedSlot.next_price).toFixed(2) }}</strong> will be deducted from your wallet now
-            (refunded if the tutor declines, and partly refunded if the class fills up).
+            (refunded in full if the tutor declines; refunded down to the final class price after it runs
+            — projected: RM{{ Number(selectedSlot.projected_price_join).toFixed(2) }}).
           </div>
 
           <button

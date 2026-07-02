@@ -211,6 +211,41 @@ foreach ($roster as $i => [$tid, $skill, $skillName, $base]) {
     $insertReview->execute(['bid' => $bid, 'rating' => $ratings[$i], 'comment' => $reviews[$i]]);
 }
 
+// ── 5b. Ring pass: EVERY non-admin account gets a past + future class as
+//        TUTOR (learner = the next account in the ring), which also gives
+//        every account a past + future class as LEARNER — so both calendar
+//        modes are populated for whoever the professor logs in as.
+$offeredMap = [];
+foreach ($db->query("SELECT user_id, skill_id FROM UserSkill") as $r) {
+    $offeredMap[(int) $r['user_id']][] = (int) $r['skill_id'];
+}
+$skillNames = $db->query("SELECT skill_id, name FROM Skill")->fetchAll(PDO::FETCH_KEY_PAIR);
+$allSkillIds = array_keys($skillNames);
+$n = count($pool);
+foreach ($pool as $i => $tid) {
+    $lid = $pool[($i + 1) % $n];
+    if ($lid === $tid) {
+        continue;
+    }
+    $skill = $offeredMap[$tid][0] ?? $allSkillIds[$i % count($allSkillIds)];
+    $skillName = $skillNames[$skill];
+    $len = 1 + ($i % 2);
+    $base = 12.0 + ($i % 3) * 2;
+    $mode = ($i % 2) ? 'Online' : 'Physical';
+    $amount = round($base * $len, 2);
+
+    // Past completed class.
+    $slot = $makeSlot($tid, -(2 + ($i % 15)), 9 + ($i % 4), $len, $base, $mode, $skill, "$skillName: recap, common pitfalls, and practice problems.");
+    $bid = $makeBooking($lid, $tid, $skill, $slot, -(2 + ($i % 15)), 9 + ($i % 4), $len, $amount, 'Completed');
+    $insertTxn->execute(['uid' => $lid, 'amount' => $amount, 'type' => 'Debit', 'bid' => $bid]);
+    $insertTxn->execute(['uid' => $tid, 'amount' => round($amount * 0.9, 2), 'type' => 'Credit', 'bid' => $bid]);
+
+    // Future accepted class.
+    $slot = $makeSlot($tid, 2 + ($i % 15), 17, $len, $base, $mode, $skill, "$skillName: core concepts, worked examples, and a Q&A at the end.");
+    $bid = $makeBooking($lid, $tid, $skill, $slot, 2 + ($i % 15), 17, $len, $amount, 'Accepted');
+    $insertTxn->execute(['uid' => $lid, 'amount' => $amount, 'type' => 'Debit', 'bid' => $bid]);
+}
+
 // ── 6. Pending requests for tutors to approve ─────────────────────────────
 // (a) First booker just picked a topic on Aisyah's slot → she must publish a
 //     syllabus before anyone else can join (needs_syllabus = 1).
@@ -280,6 +315,15 @@ $insertMsg->execute(['sender' => $daniel, 'receiver' => $U('arjun.kumar@graduate
     'body' => 'Your session booking was accepted by the tutor.']);
 $insertMsg->execute(['sender' => $priya, 'receiver' => $U('sofia.kamal@graduate.utm.my'),
     'body' => 'How was your recent session? Leave a quick review in My Classes.']);
+
+// Admin inbox: the automatic settlement notifications the system sends when
+// a group class completes (informational — no admin action needed).
+$adminId = (int) $db->query("SELECT user_id FROM User WHERE role = 'admin' ORDER BY user_id LIMIT 1")->fetchColumn();
+$insertSysMsg = $db->prepare("INSERT INTO Message (sender_id, receiver_id, body, category) VALUES (:sender, :receiver, :body, 'system')");
+$insertSysMsg->execute(['sender' => $U('farah.aziz@graduate.utm.my'), 'receiver' => $adminId,
+    'body' => 'Auto-settlement: "Public Speaking" class completed with 3 students — final price RM11.00 each, RM9.00 refunded automatically. No action needed.']);
+$insertSysMsg->execute(['sender' => $daniel, 'receiver' => $adminId,
+    'body' => 'Auto-settlement: "Calculus" class completed with 2 students — final price RM24.00 each, RM4.00 refunded automatically. No action needed.']);
 
 // ── Summary ───────────────────────────────────────────────────────────────
 echo "Seed users ensured: " . count($seedIds) . " (password: password123)\n";

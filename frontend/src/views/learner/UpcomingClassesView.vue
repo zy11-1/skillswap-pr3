@@ -106,7 +106,9 @@ onMounted(loadData)
               <div class="mt-auto d-flex justify-content-between align-items-center">
                 <span>
                   <span class="fw-bold text-primary-ss">RM{{ Number(c.next_price).toFixed(2) }}</span>
-                  <span class="d-block text-muted" style="font-size:.65rem">{{ c.booked_count }} booked · price drops as it fills</span>
+                  <span class="d-block text-muted" style="font-size:.65rem">
+                    {{ c.booked_count }} booked · final if you join: RM{{ Number(c.projected_price_join).toFixed(2) }}
+                  </span>
                 </span>
                 <button class="btn btn-primary btn-sm" @click="openJoin(c)">
                   <i class="bi bi-plus-circle me-1"></i>Join
@@ -143,7 +145,8 @@ onMounted(loadData)
             <div class="alert alert-warning py-2 small">
               <i class="bi bi-wallet2 me-1"></i>
               <strong>RM{{ Number(joinTarget.next_price).toFixed(2) }}</strong> will be deducted from your wallet now
-              (refunded if the tutor declines, and partly refunded as more people join).
+              (refunded in full if the tutor declines). The price drops RM1 for every student in the class —
+              after it runs, everyone is refunded down to the final price (projected: RM{{ Number(joinTarget.projected_price_join).toFixed(2) }}).
             </div>
             <div class="d-flex gap-2">
               <button class="btn btn-primary" :disabled="joining" @click="confirmJoin">

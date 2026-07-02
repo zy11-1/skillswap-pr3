@@ -577,7 +577,7 @@ onMounted(() => {
                   <i class="bi bi-bookmark me-1"></i>{{ slot.topic || 'Open topic' }}
                 </span>
                 <span class="badge bg-light text-dark border ms-1">
-                  RM{{ Number(slot.base_price).toFixed(0) }}/hr base · now RM{{ Number(slot.next_price).toFixed(2) }}
+                  students pay RM{{ Number(slot.next_price).toFixed(2) }} · projected final RM{{ Number(slot.projected_price).toFixed(2) }}
                 </span>
               </span>
               <span class="d-flex gap-2">

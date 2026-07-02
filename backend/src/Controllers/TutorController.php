@@ -19,8 +19,10 @@ class TutorController
 
     /**
      * Fill in the derived fields shared by every slot listing: numeric casts,
-     * the locked topic, the syllabus state, and the dynamic price the next
-     * student would pay (drops RM1 per booked seat, RM10/hr floor).
+     * the locked topic, the syllabus state, and the pricing. Every student
+     * prepays the same price (base × hours); the PROJECTED final price drops
+     * RM1 per booked student (RM10 total floor) and the difference is
+     * refunded to everyone automatically when the class completes.
      */
     private function decorateSlot(array &$slot): void
     {
@@ -35,9 +37,14 @@ class TutorController
         $slot['awaiting_syllabus'] = $slot['locked_skill_id'] !== null && $slot['needs_syllabus'];
         $hours = (int) max(1, round((strtotime($slot['end_time']) - strtotime($slot['start_time'])) / 3600));
         $slot['hours'] = $hours;
-        $nextHourly = max(self::MIN_HOURLY, $slot['base_price'] - $slot['seats_taken']);
-        $slot['next_hourly'] = round($nextHourly, 2);
-        $slot['next_price'] = round($nextHourly * $hours, 2);
+        // What every student pays upfront (same for all joiners).
+        $slot['next_hourly'] = round($slot['base_price'], 2);
+        $slot['next_price'] = round($slot['base_price'] * $hours, 2);
+        // Live projected final price: pay − RM1 × students, floored at RM10.
+        // projected_price = if the class ran with its current bookings;
+        // projected_price_join = if the viewer joined too (one more student).
+        $slot['projected_price'] = max(10.0, round($slot['next_price'] - $slot['seats_taken'], 2));
+        $slot['projected_price_join'] = max(10.0, round($slot['next_price'] - ($slot['seats_taken'] + 1), 2));
     }
 
     /**

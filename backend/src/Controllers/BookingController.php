@@ -19,8 +19,9 @@ class BookingController
     // Platform commission charged on every completed session (CLO3).
     private const COMMISSION_RATE = 0.10;
 
-    // Dynamic group pricing: per-hour price can't fall below this floor.
-    private const MIN_HOURLY = 10.0;
+    // Dynamic group pricing: the settled final price per student
+    // (base × hours − RM1 per attendee) never falls below this total.
+    private const MIN_TOTAL = 10.0;
 
     /**
      * GET /api/bookings (requires JWT)
@@ -266,12 +267,11 @@ class BookingController
             }
 
             // ---- Dynamic pricing ----------------------------------------
-            // Group classes get cheaper as they fill: the per-hour price drops
-            // RM1 for every student who has already booked, with a RM10 floor.
-            // Charged now (prepay) at this price; everyone is later equalised
-            // to the final lowest price when the session completes.
-            $hourly = max(self::MIN_HOURLY, (float) $slot['base_price'] - $seatsTaken);
-            $totalAmount = round($hourly * $duration, 2);
+            // Everyone prepays the SAME price the first student set
+            // (base price × hours). The class gets cheaper as it fills:
+            // RM1 off per attendee, refunded automatically to everyone
+            // when the session completes (never below RM10 total).
+            $totalAmount = round((float) $slot['base_price'] * $duration, 2);
 
             // Booking is always prepay: the learner pays now (held, and refunded
             // if the tutor declines/cancels). Needs the funds in their wallet.
@@ -452,6 +452,22 @@ class BookingController
                     'The session ended before your request was approved, so it was closed and RM' . number_format($c['refund'], 2) . ' refunded to your wallet.'
                 );
             }
+            // The auto-settlement needs no admin action, but the admin is
+            // kept in the loop with a summary of what the system refunded.
+            $adminId = (int) $db->query("SELECT user_id FROM User WHERE role = 'admin' ORDER BY user_id LIMIT 1")->fetchColumn();
+            if ($adminId) {
+                $n = count($groupResult['completed']);
+                $refundSum = array_sum(array_column($groupResult['completed'], 'refund'));
+                \App\Controllers\MessageController::notify(
+                    $db, (int) $booking['tutor_id'], $adminId,
+                    'Auto-settlement: "' . $groupResult['skill_name'] . '" class completed with '
+                    . $n . ' student' . ($n === 1 ? '' : 's')
+                    . ' — final price RM' . number_format($groupResult['final_total'], 2) . ' each'
+                    . ($refundSum > 0.001 ? ', RM' . number_format($refundSum, 2) . ' refunded automatically' : '')
+                    . '. No action needed.',
+                    'system'
+                );
+            }
         } else {
             // Single booking: notify the learner of the tutor's decision.
             $verb = ['Accepted' => 'accepted', 'Cancelled' => 'declined/cancelled', 'Completed' => 'marked completed'][$newStatus] ?? strtolower($newStatus);
@@ -475,16 +491,21 @@ class BookingController
     }
 
     /**
-     * Complete an entire group slot at once. Every Accepted booking is
-     * equalised to the final (lowest) price — the price drops RM1 per extra
-     * attendee down to the RM10/hr floor — overpayments are refunded, and the
-     * tutor is paid 90% / platform 10% on that final price. Any still-Pending
-     * requests are closed and fully refunded. Returns per-learner outcomes
-     * so the caller can send notifications after the transaction commits.
+     * Complete an entire group slot at once. Everyone paid the same price
+     * upfront (base × hours); the final price is that amount minus RM1 per
+     * attendee, never below RM10 total. The difference is refunded to every
+     * attendee automatically, and the tutor is paid 90% / platform 10% on
+     * the final price. Any still-Pending requests are closed and fully
+     * refunded. Returns per-learner outcomes so the caller can send
+     * notifications (including the admin's) after the transaction commits.
      */
     private function completeGroupSlot(\PDO $db, int $availabilityId): array
     {
-        $stmt = $db->prepare('SELECT tutor_id, base_price, start_time, end_time FROM TutorAvailability WHERE availability_id = :id');
+        $stmt = $db->prepare(
+            "SELECT ta.tutor_id, ta.base_price, ta.start_time, ta.end_time, sk.name AS skill_name
+             FROM TutorAvailability ta LEFT JOIN Skill sk ON sk.skill_id = ta.locked_skill_id
+             WHERE ta.availability_id = :id"
+        );
         $stmt->execute(['id' => $availabilityId]);
         $slot = $stmt->fetch();
         $tutorId = (int) $slot['tutor_id'];
@@ -496,8 +517,8 @@ class BookingController
         $attendees = $stmt->fetchAll();
 
         $finalCount = count($attendees);
-        $finalHourly = max(self::MIN_HOURLY, (float) $slot['base_price'] - max(0, $finalCount - 1));
-        $finalTotal = round($finalHourly * $duration, 2);
+        $paidTotal = round((float) $slot['base_price'] * $duration, 2);
+        $finalTotal = max(self::MIN_TOTAL, round($paidTotal - $finalCount, 2));
         $commission = round($finalTotal * self::COMMISSION_RATE, 2);
         $tutorNet = round($finalTotal - $commission, 2);
         $adminId = $db->query("SELECT user_id FROM User WHERE role = 'admin' ORDER BY user_id LIMIT 1")->fetchColumn();
@@ -544,7 +565,13 @@ class BookingController
             $cancelled[] = ['learner_id' => $learnerId, 'refund' => $amt];
         }
 
-        return ['tutor_id' => $tutorId, 'completed' => $completed, 'cancelled' => $cancelled];
+        return [
+            'tutor_id' => $tutorId,
+            'skill_name' => $slot['skill_name'] ?? 'a class',
+            'final_total' => $finalTotal,
+            'completed' => $completed,
+            'cancelled' => $cancelled,
+        ];
     }
 
     /**
